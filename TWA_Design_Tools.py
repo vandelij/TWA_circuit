@@ -10,7 +10,7 @@ class TWA_Design_Toolkit:
         self.k_par_max = k_par_max
 
         # default values
-        self.delta_phi = 1# TODO np.pi/2  # this may change if off-resonance
+        self.delta_phi = 1#np.pi/2  # this may change if off-resonance
         self.clight = 3e8 # m/s 
         self.lamda0 = self.clight / self.f0
 
@@ -22,7 +22,7 @@ class TWA_Design_Toolkit:
         self.get_key_params(to_print=False)
 
     def get_key_params(self, to_print=False):
-        delta_phi = 1# TODO np.pi/2  # self.delta_phi is NOT being used because d does not change with delta_phi: geometry of d is fixed 
+        delta_phi = 1#np.pi/2  # self.delta_phi is NOT being used because d does not change with delta_phi: geometry of d is fixed 
         self.d = delta_phi / self.k_par_max
         if to_print:
             print(f'Distance between strap centers d = {self.d} m')
@@ -55,7 +55,7 @@ class TWA_Design_Toolkit:
         g = d - wstr
 
         for n in range(nstr):
-            if z >= (-h + n*g) and z < ((-h + n*g) + wstr):
+            if z >= (-h + n*d) and z < ((-h + n*d) + wstr):
                 return J0*np.exp(1j*n*self.delta_phi)
             
         return 0 # if z was not in any of those ranges, return 0
@@ -78,33 +78,64 @@ class TWA_Design_Toolkit:
 
     def get_fft_of_J_of_z(self, zmin, zmax, num_points, J0):
         zarray = np.linspace(zmin, zmax, num_points)
-        dz = zarray[1] - zarray[0]
+        dz = (zarray[1] - zarray[0]) # TODO
         Jarray = np.zeros_like(zarray, dtype=complex)
 
         for i in range(Jarray.shape[0]):
             Jarray[i] = self.get_J_z(J0, zarray[i])
 
         # perform the fft of the current 
-        J_k = np.fft.fftshift(np.fft.fft(Jarray)) * dz / (2 * np.pi) 
+        J_k = np.fft.fftshift(np.fft.fft(Jarray)) 
 
         # Generate k-space values
-        dk = 2 * np.pi / (num_points * dz)
-        k_values = np.fft.fftshift(np.fft.fftfreq(num_points, dz))
+        k_values = 2*np.pi*np.fft.fftshift(np.fft.fftfreq(num_points, dz))
 
         return k_values, J_k
         
 
-    def plot_J_k_versus_k(self, zmin, zmax, num_points, J0):
-        k_values, J_k = self.get_fft_of_J_of_z(zmin, zmax, num_points, J0)
+    def get_fft_analytic(self, k, P0):
+        n = -k*self.clight/self.w0 # TODO
+        if n == 0:
+            return 1*P0
+        else:
+            term1 = np.sin(n*self.wstr*self.w0/(2*self.clight))**2 / n**2
+            alpha = self.delta_phi + n*self.w0*self.d/self.clight
+            term2 = np.sin(self.num_straps*alpha/2)**2/np.sin(alpha/2)**2
+            return P0*term1 * term2
+        
+    def get_plot_fft_analytic(self, kmin, kmax, num_points, P0):
+        karray = np.linspace(kmin, kmax, num_points)
+        power_array = np.zeros_like(karray)
+        for i in range(karray.shape[0]):
+            power_array[i] = self.get_fft_analytic(karray[i], P0)
+        plt.plot(karray, np.sqrt(power_array))
+        plt.show()
+
+        
+
+    def plot_J_k_versus_k(self, zmin, zmax, kplotmin, kplotmax, num_pointsz, num_pointsk, J0):
+        k_values, J_k = self.get_fft_of_J_of_z(zmin, zmax, num_pointsz, J0)
         #plt.plot(k_values, np.real(J_k), label='Real', color='red')
         #plt.plot(k_values, np.imag(J_k), label='Imagenary', color='blue')
-        plt.plot(k_values, np.abs(J_k), label='Magintude', color='purple', linestyle='--')
+        # plt.plot(k_values)
+        # plt.show()
+        indicies = np.where((k_values >= kplotmin) & (k_values <= kplotmax))
+        peak = np.max(np.abs(J_k[indicies]))
+        plt.plot(k_values, np.abs(J_k)/peak, label='fft Magnitude', color='purple')
         plt.xlabel(r'$k_z$ [m$^{-1}$]')
         plt.ylabel(r'J(k)')
+        plt.xlim(kplotmin, kplotmax)
+        plt.axvline(x=self.k_par_max, ymin=0, ymax=max(np.abs(J_k)/peak), color='black', linestyle='--')
 
-        # now,plot expected curve 
+        # now,plot expected curve
 
 
+        karray = np.linspace(kplotmin, kplotmax, num_pointsk)
+        power_array = np.zeros_like(karray)
+        for i in range(karray.shape[0]):
+            power_array[i] = self.get_fft_analytic(karray[i], J0**2)
+        plt.plot(karray, np.sqrt(power_array)/np.max(np.sqrt(power_array)), color='red', label='analytic', linestyle='--')
+        plt.legend()
         plt.show()
 
 
