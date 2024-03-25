@@ -3,14 +3,13 @@ import matplotlib.pyplot as plt
 
 class TWA_Design_Toolkit:
 
-    def __init__(self, num_straps, f0, k_par_max):
+    def __init__(self, num_straps, f0, k_par_max, d_straps=0):
         self.f0 = f0
         self.w0 = 2*np.pi*f0
         self.num_straps = num_straps
         self.k_par_max = k_par_max
 
         # default values
-        self.delta_phi = 1#np.pi/2  # this may change if off-resonance
         self.clight = 3e8 # m/s 
         self.lamda0 = self.clight / self.f0
 
@@ -18,17 +17,34 @@ class TWA_Design_Toolkit:
         self.called_set_strap_width = False
 
         # function calls
+        if d_straps == 0:
+            print(f"You are at resonance, so delta_phi = pi/2. Solving for d given k_par:")
+            self.set_key_params_at_resonance()
+            
+        else: 
+            print(f"You are off resonance, so d is supplied by you. Solving for delta_phi given k_par:")
+            self.set_key_params_off_resonance(d_straps)
 
-        self.get_key_params(to_print=False)
-
-    def get_key_params(self, to_print=False):
-        delta_phi = 1#np.pi/2  # self.delta_phi is NOT being used because d does not change with delta_phi: geometry of d is fixed 
+    def set_key_params_at_resonance(self):
+        delta_phi = np.pi/2  # At TWA resonance, the phase difference is pi/2.  
         self.d = delta_phi / self.k_par_max
-        if to_print:
-            print(f'Distance between strap centers d = {self.d} m')
-            print(f'The first null will be at {2*np.pi/(self.d*self.num_straps)} m^-1')
-            print(r'Strap length should be less than lambda/4 = ' + f'{self.lamda0/4} m')
-        
+        self.delta_phi = delta_phi
+    
+    def set_key_params_off_resonance(self, d):
+        # Here, d is used with k_par_max in order to get the delta_phi
+        self.delta_phi =   d*self.k_par_max
+        self.d = d
+
+    def print_key_params(self):
+        print('\n')
+        print('----------------Parameter--Box-------------------')
+        print(f'Distance between strap centers d = {self.d} m')
+        print(f'The first null will be at {2*np.pi/(self.d*self.num_straps)} m^-1')
+        print(f'delta_phi = {self.delta_phi/np.pi} pi')
+        print(r'Strap length should be less than lambda/4 = ' + f'{self.lamda0/4} m')
+        print('--------------END--Parameter--Box----------------')
+        print('\n')
+
     def set_strap_width(self, w):
         self.wstr = w
         self.called_set_strap_width = True
@@ -42,17 +58,16 @@ class TWA_Design_Toolkit:
     def get_J_z(self, J0, z):
         """
         This function takes in the current magnitude for each strap assuming constant power
-        and constructs a peicwise function determing J(z) per strap. 
+        and constructs a peice-wise function determing J(z) per strap. 
         """
         if self.called_set_strap_width == False:
-            raise ValueError('Error: trap width has not been set. Use set_strap_width to do this')
+            raise ValueError('Error: strap width has not been set. Use set_strap_width to do this')
         
         wstr = self.wstr
         nstr = self.num_straps
         d = self.d
 
         h = (nstr*wstr + (nstr - 1)*(d - wstr) )  / 2
-        g = d - wstr
 
         for n in range(nstr):
             if z >= (-h + n*d) and z < ((-h + n*d) + wstr):
@@ -137,6 +152,9 @@ class TWA_Design_Toolkit:
         plt.plot(karray, np.sqrt(power_array)/np.max(np.sqrt(power_array)), color='red', label='analytic', linestyle='--')
         plt.legend()
         plt.show()
+
+# area to get the needed capacitance per strap 
+
 
 
 
