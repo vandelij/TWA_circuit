@@ -229,6 +229,11 @@ class TWA_Design_Toolkit:
         self.calculate_C0()
         # simple double plate cap with vacuum in the gap hieght in meters  
         return self.C0*h/self.epsi0
+    
+    def cap_gap_given_area(self, A):
+        self.calculate_C0()
+        # simple double plate cap with vacuum in the gap hieght in meters  
+        return self.epsi0*A/self.C0
 
 
     def build_lumped_element_model(self, L, C, M, R0, Rt):
