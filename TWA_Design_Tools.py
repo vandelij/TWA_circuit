@@ -10,11 +10,15 @@ class TWA_Design_Toolkit:
         self.k_par_max = k_par_max
 
         # default values
-        self.clight = 3e8 # m/s 
+        self.clight = 299792458 # m/s 
+        self.mu0 = (4*np.pi)*1e-7  # vacuum permeability 
+        self.epsi0 = 8.854e-12 # vacuum permitivity 
         self.lamda0 = self.clight / self.f0
 
         # flags
         self.called_set_strap_width = False
+        self.called_get_Z_matrix_from_S_matrix = False
+
 
         # function calls
         if d_straps == 0:
@@ -155,7 +159,76 @@ class TWA_Design_Toolkit:
 
 # area to get the needed capacitance per strap 
 
+    def get_Z_matrix_from_S_matrix(self, S_mat, Z0_port):
+        self.called_get_Z_matrix_from_S_matrix = True # set flag to called 
+        self.Smatrix = S_mat
+        smat_size = S_mat.shape[0]  # get the shape of the S matrix
+        I = np.identity(smat_size, dtype=complex)
+        self.Zmatrix = Z0_port*np.matmul((I + S_mat),np.linalg.inv(I - S_mat))
+        return self.Zmatrix
 
+    def get_coax_Z0(self, d_outer, d_inner):
+        # Takes in the outer and inner diameter of the coax cable gap and returns the cable characteristic impedence
+        # this assumes vaccuum in the coax. adjust epsi0 and mu0 with mu_r and epsi_r to model dielectric filled coax
+        return (1/(2*np.pi))*np.sqrt(self.mu0/self.epsi0)*np.log(d_outer/d_inner)
+    
+    def plot_Smat_and_Zmat(self):
+        if self.called_get_Z_matrix_from_S_matrix == False: 
+            raise ValueError('You need to set the Smatrix first, which calculates the Zmatrix. Use get_Z_matrix_from_S_matrix.') 
+        
+        Zmat = self.Zmatrix
+        Smat = self.Smatrix
+        fig, axs = plt.subplots(2, 3, figsize=(15, 15))
+
+        s1 = axs[0,0].matshow(np.real(Smat))
+        plt.colorbar(s1, ax=axs[0,0])
+
+        s2 = axs[0,1].matshow(np.imag(Smat))
+        plt.colorbar(s2, ax=axs[0,1])
+
+        s3 = axs[0,2].matshow(np.abs(Smat))
+        plt.colorbar(s3, ax=axs[0,2])
+
+        axs[0,0].axis('equal')
+        axs[0,1].axis('equal')
+        axs[0,2].axis('equal')
+
+        axs[0,0].set_title('Re[S]')
+        axs[0,1].set_title('Im[S]')
+        axs[0,2].set_title('|S|')
+
+        s4 = axs[1,0].matshow(np.real(Zmat))
+        plt.colorbar(s4, ax=axs[1,0])
+
+        s5 = axs[1,1].matshow(np.imag(Zmat))
+        plt.colorbar(s5, ax=axs[1,1])
+
+        s6 = axs[1,2].matshow(np.abs(Zmat))
+        plt.colorbar(s6, ax=axs[1,2])
+
+        axs[1,0].axis('equal')
+        axs[1,1].axis('equal')
+        axs[1,2].axis('equal')
+
+        axs[1,0].set_title('Re[Z]')
+        axs[1,1].set_title('Im[Z]')
+        axs[1,2].set_title('|Z|')
+        plt.show()
+
+    def calculate_C0(self):
+        # Uses the Smatrix -> Zmatrix to find the capacitance needed per strap to cancel the self-inductance to set the TWA in resonance 
+        if self.called_get_Z_matrix_from_S_matrix == False: 
+            raise ValueError('You need to set the Smatrix first, which calculates the Zmatrix. Use get_Z_matrix_from_S_matrix.') 
+        
+        smat_size = self.Smatrix.shape[0]
+        L_average = np.imag((1/smat_size)*np.trace(self.Zmatrix))
+        self.C0 = 1 / (self.w0*L_average)
+        return self.C0
+    
+    def cap_area_given_gap(self, h):
+        self.calculate_C0()
+        # simple double plate cap with vacuum in the gap hieght in meters  
+        return self.C0*h/self.epsi0
 
 
     def build_lumped_element_model(self, L, C, M, R0, Rt):
