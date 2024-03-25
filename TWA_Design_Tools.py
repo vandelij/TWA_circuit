@@ -30,13 +30,18 @@ class TWA_Design_Toolkit:
             self.set_key_params_off_resonance(d_straps)
 
     def set_key_params_at_resonance(self):
-        delta_phi = np.pi/2  # At TWA resonance, the phase difference is pi/2.  
-        self.d = delta_phi / self.k_par_max
+        # At TWA resonance, the phase difference is pi/2. Sign matches k_par, as del_phi/d = k_par, and d is a + value. 
+        if self.k_par_max < 0:
+            delta_phi = -np.pi/2  # At TWA resonance, the phase difference is pi/2.  #TODO change this to posotive 
+        else: 
+            delta_phi = np.pi/2 
+
+        self.d = np.abs(delta_phi / self.k_par_max)
         self.delta_phi = delta_phi
     
     def set_key_params_off_resonance(self, d):
         # Here, d is used with k_par_max in order to get the delta_phi
-        self.delta_phi =   d*self.k_par_max
+        self.delta_phi =  d*self.k_par_max
         self.d = d
 
     def print_key_params(self):
@@ -113,12 +118,13 @@ class TWA_Design_Toolkit:
         
 
     def get_fft_analytic(self, k, P0):
-        n = -k*self.clight/self.w0 # TODO
+        n = k*self.clight/self.w0 # TODO why is this negative? 
         if n == 0:
             return 1*P0
         else:
             term1 = np.sin(n*self.wstr*self.w0/(2*self.clight))**2 / n**2
-            alpha = self.delta_phi + n*self.w0*self.d/self.clight
+            alpha = -self.delta_phi + n*self.w0*self.d/self.clight  # this negative sign seems to fix this.. 
+            # alpha = self.delta_phi + n*self.w0*self.d/self.clight
             term2 = np.sin(self.num_straps*alpha/2)**2/np.sin(alpha/2)**2
             return P0*term1 * term2
         
@@ -227,12 +233,12 @@ class TWA_Design_Toolkit:
     
     def cap_area_given_gap(self, h):
         self.calculate_C0()
-        # simple double plate cap with vacuum in the gap hieght in meters  
+        # simple double plate cap with vacuum in the gap. hieght in meters  
         return self.C0*h/self.epsi0
     
     def cap_gap_given_area(self, A):
         self.calculate_C0()
-        # simple double plate cap with vacuum in the gap hieght in meters  
+        # simple double plate cap with vacuum in the gap. area in meters^2  
         return self.epsi0*A/self.C0
 
 
