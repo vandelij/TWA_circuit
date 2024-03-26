@@ -163,6 +163,31 @@ class TWA_Design_Toolkit:
         plt.legend()
         plt.show()
 
+    def plot_normalized_power_versus_k(self, zmin, zmax, kplotmin, kplotmax, num_pointsz, num_pointsk, J0):
+        k_values, J_k = self.get_fft_of_J_of_z(zmin, zmax, num_pointsz, J0)
+        #plt.plot(k_values, np.real(J_k), label='Real', color='red')
+        #plt.plot(k_values, np.imag(J_k), label='Imagenary', color='blue')
+        # plt.plot(k_values)
+        # plt.show()
+        indicies = np.where((k_values >= kplotmin) & (k_values <= kplotmax))
+        peak = np.max(np.abs(J_k[indicies]))
+        plt.plot(k_values, np.square(np.abs(J_k)/peak), label='fft Magnitude', color='blue')
+        plt.xlabel(r'$k_z$ [m$^{-1}$]')
+        plt.ylabel(r'P(k)/$P_0$')
+        plt.xlim(kplotmin, kplotmax)
+        plt.axvline(x=self.k_par_max, ymin=0, ymax=max(np.abs(J_k)/peak), color='black', linestyle='--')
+
+        # now,plot expected curve
+
+
+        karray = np.linspace(kplotmin, kplotmax, num_pointsk)
+        power_array = np.zeros_like(karray)
+        for i in range(karray.shape[0]):
+            power_array[i] = self.get_fft_analytic(karray[i], J0**2)
+        plt.plot(karray, power_array/np.max(power_array), color='black', label='analytic', linestyle='--')
+        plt.legend()
+        plt.show()
+
 # area to get the needed capacitance per strap 
 
     def get_Z_matrix_from_S_matrix(self, S_mat, Z0_port):
