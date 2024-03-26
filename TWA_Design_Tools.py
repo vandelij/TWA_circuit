@@ -252,8 +252,8 @@ class TWA_Design_Toolkit:
             raise ValueError('You need to set the Smatrix first, which calculates the Zmatrix. Use get_Z_matrix_from_S_matrix.') 
         
         smat_size = self.Smatrix.shape[0]
-        L_average = np.imag((1/smat_size)*np.trace(self.Zmatrix))
-        self.C0 = 1 / (self.w0*L_average)
+        w_L_average = np.imag((1/smat_size)*np.trace(self.Zmatrix)) # note: this is the average iductive reactance, X = w0*L_self
+        self.C0 = 1 / (self.w0*w_L_average)  # dont be confused: its w0 not w0^2 because the other w is hidden in the inductive reactance
         return self.C0
     
     def calculate_C1(self):
