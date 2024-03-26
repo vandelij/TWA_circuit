@@ -256,6 +256,10 @@ class TWA_Design_Toolkit:
         self.C0 = 1 / (self.w0*L_average)
         return self.C0
     
+    def calculate_C1(self):
+        # if you choose a T-feed instead of an L-feed, your circuit is a CLC series: 1/(jwC1) + 1/(jwC1) + jwL = 0 cancels reactive L
+        return 2*self.calculate_C0() 
+    
     def cap_area_given_gap(self, h):
         self.calculate_C0()
         # simple double plate cap with vacuum in the gap. hieght in meters  
