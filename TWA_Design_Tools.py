@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import csv
 
 class TWA_Design_Toolkit:
 
@@ -17,7 +18,8 @@ class TWA_Design_Toolkit:
 
         # flags
         self.called_set_strap_width = False
-        self.called_get_Z_matrix_from_S_matrix = False
+        self.S_matrix_set = False
+        self.called_get_Z_matrix = False
 
 
         # function calls
@@ -189,14 +191,45 @@ class TWA_Design_Toolkit:
         plt.show()
 
 # area to get the needed capacitance per strap 
+    def read_Smat_from_comsol_portscan_Stable(self, filename, return_flag=False):
+        # this function reads in the csv file saved from runnnig a comsol 
+        # port scan and outputs the Smatrix 
+        data = []
+        with open(filename, 'r') as file:
+            reader = csv.reader(file)
+            for row in reader:
+                data.append(row)
+        data[5:]
+        complex_array = np.array([[complex(num.replace('i', 'j')) for num in row] for row in data[5:]], dtype=complex)[:, 2:]
+        size_Smatrix = int(np.sqrt(complex_array.shape[1]))
+        Smat = np.zeros((size_Smatrix, size_Smatrix), dtype=complex)
+        colnum = 0
 
-    def get_Z_matrix_from_S_matrix(self, S_mat, Z0_port):
-        self.called_get_Z_matrix_from_S_matrix = True # set flag to called 
+        # build up the S matrix
+        for i in range(size_Smatrix):
+            for j in range(size_Smatrix):
+                Sij = complex_array[j, colnum]
+                Smat[i,j] = Sij
+                colnum += 1
+
+        self.Smatrix = Smat
+        self.S_matrix_set = True # set flag to set
+        if return_flag:
+            return Smat
+
+    def set_Smatrix(self, S_mat):
+        # provides a manual way to set the S matrix 
         self.Smatrix = S_mat
+        self.S_matrix_set = True # set flag to set
+
+    def get_Z_matrix(self, Z0_port, return_flag=False): 
+        S_mat = self.Smatrix
         smat_size = S_mat.shape[0]  # get the shape of the S matrix
         I = np.identity(smat_size, dtype=complex)
         self.Zmatrix = Z0_port*np.matmul((I + S_mat),np.linalg.inv(I - S_mat))
-        return self.Zmatrix
+        self.called_get_Z_matrix = True
+        if return_flag:
+            return self.Zmatrix
 
     def get_coax_Z0(self, d_outer, d_inner):
         # Takes in the outer and inner diameter of the coax cable gap and returns the cable characteristic impedence
@@ -204,8 +237,8 @@ class TWA_Design_Toolkit:
         return (1/(2*np.pi))*np.sqrt(self.mu0/self.epsi0)*np.log(d_outer/d_inner)
     
     def plot_Smat_and_Zmat(self):
-        if self.called_get_Z_matrix_from_S_matrix == False: 
-            raise ValueError('You need to set the Smatrix first, which calculates the Zmatrix. Use get_Z_matrix_from_S_matrix.') 
+        if self.S_matrix_set  == False: 
+            raise ValueError('You need to set the Smatrix first, which calculates the Zmatrix.') 
         
         Zmat = self.Zmatrix
         Smat = self.Smatrix
@@ -248,8 +281,8 @@ class TWA_Design_Toolkit:
 
     def calculate_C0(self):
         # Uses the Smatrix -> Zmatrix to find the capacitance needed per strap to cancel the self-inductance to set the TWA in resonance 
-        if self.called_get_Z_matrix_from_S_matrix == False: 
-            raise ValueError('You need to set the Smatrix first, which calculates the Zmatrix. Use get_Z_matrix_from_S_matrix.') 
+        if self.called_get_Z_matrix == False: 
+            raise ValueError(f'You need to set the Smatrix first, which calculates the Zmatrix. It is {self.called_get_Z_matrix}') 
         
         smat_size = self.Smatrix.shape[0]
         w_L_average = np.imag((1/smat_size)*np.trace(self.Zmatrix)) # note: this is the average iductive reactance, X = w0*L_self

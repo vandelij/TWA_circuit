@@ -16,8 +16,8 @@ zrange = 100
 #myTWA.plot_J_k_versus_k(zmin=-zrange, zmax=zrange, kplotmin=3, kplotmax=5, num_pointsz=num_points, num_pointsk=1000, J0=1)
 
 S_mat = np.loadtxt('S_mat_real.txt') - 1j*np.loadtxt('S_mat_imag.txt')
-
-myTWA.get_Z_matrix_from_S_matrix(S_mat, Z0_port=83.1201)
+myTWA.set_Smatrix(S_mat)
+myTWA.get_Z_matrix(Z0_port=83.1201)
 myTWA.plot_Smat_and_Zmat()
 print('C0 = ', myTWA.calculate_C0()/1e-12, ' pF')
 
