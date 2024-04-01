@@ -212,6 +212,9 @@ class TWA_Design_Toolkit:
                 Smat[i,j] = Sij
                 colnum += 1
 
+        # Smat = -np.imag(Smat) + 1j*np.real(Smat)# TODO: REMOVE ME!
+        #Smat = np.real(Smat) - 1j*np.imag(Smat)# TODO: REMOVE ME!
+        Smat = 1j*Smat  # TODO: this also is sus and needs to be removed. 
         self.Smatrix = Smat
         self.S_matrix_set = True # set flag to set
         if return_flag:
@@ -253,6 +256,10 @@ class TWA_Design_Toolkit:
         s3 = axs[0,2].matshow(np.abs(Smat))
         plt.colorbar(s3, ax=axs[0,2])
 
+        s1.set_clim(vmin=-.8, vmax=.8)
+        s2.set_clim(vmin=-.8, vmax=.8)
+        s3.set_clim(vmin=-.8, vmax=.8)
+
         axs[0,0].axis('equal')
         axs[0,1].axis('equal')
         axs[0,2].axis('equal')
@@ -273,6 +280,10 @@ class TWA_Design_Toolkit:
         axs[1,0].axis('equal')
         axs[1,1].axis('equal')
         axs[1,2].axis('equal')
+
+        # s4.set_clim(vmin=-1, vmax=1)
+        # s5.set_clim(vmin=-1, vmax=1)
+        # s6.set_clim(vmin=-1, vmax=1)
 
         axs[1,0].set_title('Re[Z]')
         axs[1,1].set_title('Im[Z]')
