@@ -189,9 +189,34 @@ class TWA_Design_Toolkit:
         plt.plot(karray, power_array/np.max(power_array), color='black', label='analytic', linestyle='--')
         plt.legend()
         plt.show()
-
+        
 # area to get the needed capacitance per strap 
     def read_Smat_from_comsol_portscan_Stable(self, filename, return_flag=False):
+        # this function reads in the csv file saved from runnnig a comsol 
+        # port scan and outputs the Smatrix 
+        data = []
+        filename = 'Smat_comsol_53_MHz.csv'
+        with open(filename, 'r') as file:
+            reader = csv.reader(file)
+            for row in reader:
+                data.append(row)
+
+        data = data[5:]
+        Smat_string  = []
+        for row in data:
+            Smat_string.append(row[1:])
+
+        Smat = np.array([[complex(num.replace('i', 'j')) for num in row] for row in Smat_string], dtype=complex)
+
+        # Smat = -np.imag(Smat) + 1j*np.real(Smat)# TODO: REMOVE ME!
+        #Smat = np.real(Smat) - 1j*np.imag(Smat)# TODO: REMOVE ME!
+        #Smat = 1j*Smat  # TODO: this also is sus and needs to be removed. 
+        self.Smatrix = Smat
+        self.S_matrix_set = True # set flag to set
+        if return_flag:
+            return Smat
+      # This version is depricated and uses an inferior comsol output file format   
+    def read_Smat_from_comsol_portscan_Stable_depricated(self, filename, return_flag=False):
         # this function reads in the csv file saved from runnnig a comsol 
         # port scan and outputs the Smatrix 
         data = []
@@ -199,7 +224,7 @@ class TWA_Design_Toolkit:
             reader = csv.reader(file)
             for row in reader:
                 data.append(row)
-        data[5:]
+        #data[5:]
         complex_array = np.array([[complex(num.replace('i', 'j')) for num in row] for row in data[5:]], dtype=complex)[:, 2:]
         size_Smatrix = int(np.sqrt(complex_array.shape[1]))
         Smat = np.zeros((size_Smatrix, size_Smatrix), dtype=complex)
