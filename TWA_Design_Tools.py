@@ -214,7 +214,7 @@ class TWA_Design_Toolkit:
 
         # Smat = -np.imag(Smat) + 1j*np.real(Smat)# TODO: REMOVE ME!
         #Smat = np.real(Smat) - 1j*np.imag(Smat)# TODO: REMOVE ME!
-        Smat = 1j*Smat  # TODO: this also is sus and needs to be removed. 
+        #Smat = 1j*Smat  # TODO: this also is sus and needs to be removed. 
         self.Smatrix = Smat
         self.S_matrix_set = True # set flag to set
         if return_flag:

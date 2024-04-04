@@ -15,7 +15,9 @@ zrange = 100
 #myTWA.plot_J_of_z(J0=1, zmin=-zrange, zmax=zrange, num_points=num_points)
 #myTWA.plot_J_k_versus_k(zmin=-zrange, zmax=zrange, kplotmin=3, kplotmax=5, num_pointsz=num_points, num_pointsk=1000, J0=1)
 
-S_mat = np.loadtxt('S_mat_real.txt') - 1j*np.loadtxt('S_mat_imag.txt')
+# S_mat = np.loadtxt('S_mat_real.txt') - 1j*np.loadtxt('S_mat_imag.txt')
+#S_mat = np.loadtxt('S_mat_96MHz_real.txt') - 1j*np.loadtxt('S_mat_96MHz_imag.txt')
+S_mat = 1j*(np.loadtxt('Smat_testing_R.txt') + 1j*np.loadtxt('Smat_testing_I.txt'))
 myTWA.set_Smatrix(S_mat)
 myTWA.get_Z_matrix(Z0_port=83.1201)
 myTWA.plot_Smat_and_Zmat()
@@ -35,3 +37,4 @@ print('C0 = ', myTWA.calculate_C0()/1e-12, ' pF')
 # np.abs(Zmat[0,0])
 
 # TODO: you are to solve for the capacitance needed at each strap and the average. 
+
