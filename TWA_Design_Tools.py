@@ -195,7 +195,6 @@ class TWA_Design_Toolkit:
         # this function reads in the csv file saved from runnnig a comsol 
         # port scan and outputs the Smatrix 
         data = []
-        filename = 'Smat_comsol_53_MHz.csv'
         with open(filename, 'r') as file:
             reader = csv.reader(file)
             for row in reader:
