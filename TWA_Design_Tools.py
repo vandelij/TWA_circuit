@@ -20,6 +20,7 @@ class TWA_Design_Toolkit:
         self.called_set_strap_width = False
         self.S_matrix_set = False
         self.called_get_Z_matrix = False
+        self.center_fed = False
 
 
         # function calls
@@ -30,6 +31,10 @@ class TWA_Design_Toolkit:
         else: 
             print(f"You are off resonance, so d is supplied by you. Solving for delta_phi given k_par:")
             self.set_key_params_off_resonance(d_straps)
+
+    def set_center_fed(self, center_fed_bool):
+        self.center_fed = center_fed_bool
+
 
     def set_key_params_at_resonance(self):
         # At TWA resonance, the phase difference is pi/2. Sign matches k_par, as del_phi/d = k_par, and d is a + value. 
@@ -85,21 +90,48 @@ class TWA_Design_Toolkit:
                 return J0*np.exp(1j*n*self.delta_phi)
             
         return 0 # if z was not in any of those ranges, return 0
+    
+    def get_J_z_centerfed(self, J0, z):
+        """
+        This function takes in the current magnitude for each strap assuming constant power
+        and constructs a peice-wise function determing J(z) per strap, assuming center fed.
+        Must be an even number of straps.  
+        """
+        if self.called_set_strap_width == False:
+            raise ValueError('Error: strap width has not been set. Use set_strap_width to do this')
+        
+        if self.num_straps % 2 == 0:
+            raise ValueError('To be center fed, you must have an even number of straps')
+        
+        wstr = self.wstr
+        nstr = self.num_straps
+        d = self.d
+
+        h = (nstr*wstr + (nstr - 1)*(d - wstr) )  / 2
+        m = (nstr-1)/2
+
+        for n in range(nstr):
+            if z >= (-h + n*d) and z < ((-h + n*d) + wstr):
+                return J0*np.exp(1j*np.abs(m-n)*self.delta_phi)
+            
+        return 0 # if z was not in any of those ranges, return 0
             
     def plot_J_of_z(self, J0, zmin, zmax, num_points):
         zarray = np.linspace(zmin, zmax, num_points)
         Jarray = np.zeros_like(zarray,dtype=complex)
 
         for i in range(Jarray.shape[0]):
-            Jarray[i] = self.get_J_z(J0, zarray[i])
+            if not self.center_fed:
+                Jarray[i] = self.get_J_z(J0, zarray[i])
+            elif self.center_fed: 
+                Jarray[i] = self.get_J_z_centerfed(J0, zarray[i])
 
-        #plt.plot(zarray, np.real(Jarray), color='red', label='Real')
-        #plt.plot(zarray, np.imag(Jarray), color='blue', label='Imaginary')
         plt.plot(zarray, np.abs(Jarray), color='purple', linestyle='--', label='Magnitude')
         plt.scatter(zarray, np.abs(Jarray), color='purple', marker='.', label='Magnitude')
         plt.legend()
         plt.xlabel('z [m]')
         plt.ylabel('J [A/m^2]')
+        plt.grid()
         plt.show()
 
     def get_fft_of_J_of_z(self, zmin, zmax, num_points, J0):
@@ -108,7 +140,11 @@ class TWA_Design_Toolkit:
         Jarray = np.zeros_like(zarray, dtype=complex)
 
         for i in range(Jarray.shape[0]):
-            Jarray[i] = self.get_J_z(J0, zarray[i])
+            if not self.center_fed:
+                Jarray[i] = self.get_J_z(J0, zarray[i])
+            elif self.center_fed: 
+                print('Your straps are center fed')
+                Jarray[i] = self.get_J_z_centerfed(J0, zarray[i])
 
         # perform the fft of the current 
         J_k = np.fft.fftshift(np.fft.fft(Jarray)) 
@@ -136,6 +172,7 @@ class TWA_Design_Toolkit:
         for i in range(karray.shape[0]):
             power_array[i] = self.get_fft_analytic(karray[i], P0)
         plt.plot(karray, np.sqrt(power_array))
+        plt.grid()
         plt.show()
 
         
@@ -163,6 +200,7 @@ class TWA_Design_Toolkit:
             power_array[i] = self.get_fft_analytic(karray[i], J0**2)
         plt.plot(karray, np.sqrt(power_array)/np.max(np.sqrt(power_array)), color='red', label='analytic', linestyle='--')
         plt.legend()
+        plt.grid()
         plt.show()
 
     def plot_normalized_power_versus_k(self, zmin, zmax, kplotmin, kplotmax, num_pointsz, num_pointsk, J0):
@@ -188,6 +226,7 @@ class TWA_Design_Toolkit:
             power_array[i] = self.get_fft_analytic(karray[i], J0**2)
         plt.plot(karray, power_array/np.max(power_array), color='black', label='analytic', linestyle='--')
         plt.legend()
+        plt.grid()
         plt.show()
         
 # area to get the needed capacitance per strap 
