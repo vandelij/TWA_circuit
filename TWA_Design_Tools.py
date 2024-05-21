@@ -106,7 +106,6 @@ class TWA_Design_Toolkit:
         wstr = self.wstr
         nstr = self.num_straps
         d = self.d
-
         h = (nstr*wstr + (nstr - 1)*(d - wstr) )  / 2
         m = (nstr-1)/2
 
@@ -143,7 +142,6 @@ class TWA_Design_Toolkit:
             if not self.center_fed:
                 Jarray[i] = self.get_J_z(J0, zarray[i])
             elif self.center_fed: 
-                print('Your straps are center fed')
                 Jarray[i] = self.get_J_z_centerfed(J0, zarray[i])
 
         # perform the fft of the current 
