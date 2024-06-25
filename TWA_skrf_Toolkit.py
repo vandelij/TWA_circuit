@@ -5,11 +5,19 @@ import skrf as rf
 
 class TWA_skrf_Toolkit:
 
-    def __init__(self, num_straps, f0, k_par_max, capz0, antz0):
+    def __init__(self, num_straps, f0, k_par_max, capz0, antz0, freqs_for_fullant, capfile, antfile):
+        """
+        freqs_for_fullant: frequency np array in [MHz] 
+        capfile: path to comsol output csv file containing freq, length, S11... on each row
+        antfile: path to comsol output csv file contaiing freq, Smat data 
+        """
         self.f0 = f0
         self.w0 = 2*np.pi*f0
         self.num_straps = num_straps
         self.k_par_max = k_par_max
+        self.freqs_for_fullant = freqs_for_fullant
+        self.capfile = capfile
+        self.antfile = antfile 
 
         # default values
         self.clight = 299792458 # m/s 
@@ -30,14 +38,14 @@ class TWA_skrf_Toolkit:
         self.geometry_dict['lamda0'] = self.lamda0 # free space wavelength 
 
         # port properties
-        self.cap_z0 = capz0  # the chopped cap rectangular z0
-        self.ant_z0 = antz0  # the main antenna coax feed z0
+        self.capz0 = capz0  # the chopped cap rectangular z0
+        self.antz0 = antz0  # the main antenna coax feed z0
 
     def print_geometry(self):
         for key in self.geometry_dict:
             print(f'{key}: ', self.geometry_dict[key])
 
-    def get_cap_S_datatable(self, filename):
+    def get_comsol_datatable(self, filename):
         data = []
         with open(filename, 'r') as file:
             reader = csv.reader(file)
@@ -53,7 +61,7 @@ class TWA_skrf_Toolkit:
 
     def get_cap_S_given_f_and_lcap(self,filename, f, lcap, round_level=3):
         lcap = np.round(lcap, round_level)
-        data, headers = self.get_cap_S_datatable(filename)
+        data, headers = self.get_comsol_datatable(filename)
         freqs = np.real(data[:, 0])
         ufreqs = np.unique(freqs)
         num_freq = ufreqs.shape[0]
@@ -94,7 +102,7 @@ class TWA_skrf_Toolkit:
         return capnet
     
 
-    def print_Znorm_and_capacitance(self, network, f, toprint=True):
+    def print_znorm_and_capacitance(self, network, f, toprint=True):
         """
         f: frequency in MHz
         z0: required characteristic impedence 
@@ -107,3 +115,134 @@ class TWA_skrf_Toolkit:
             print(f'Zcap:{Zcap}, z0: {network.z0[0]}, Zcap/z0: {Zcap/network.z0[0]}')
             print(f'C = {C*1e12} pF')
         return Zcap, C
+        
+    def get_ant_Smat_given_f(self, filename, f):
+        data, headers = self.get_comsol_datatable(filename)
+        num_ports = data[0,:].shape[0] - 1
+        self.num_ports_chopped_ant = num_ports - 2 # the number of "chopped" cap ports, one per strap 
+        if self.num_ports_chopped_ant != self.num_straps:
+            raise ValueError(f'The number of straps {self.num_straps} does not match nnumber of chopped ports {self.num_ports_chopped_ant}')
+        
+        freqs = np.real(data[:, 0])
+        ufreqs = np.unique(freqs)
+        num_freqs = ufreqs.shape[0]
+        i_f = np.where(ufreqs == f)[0][0]
+        start_idx = i_f*num_freqs
+        Smat = data[start_idx:(start_idx+num_ports), 1:]
+        return Smat # this is the smat for a given frequency 
+    
+    def build_antnet_chopped(self, freqs, filename, name=None):
+        """
+        freqs: a numpy array of frquencies in MHz
+        """
+        z0s = [self.antz0, self.antz0] + [self.capz0]*self.num_straps # create a list of the antenna port z0s. The two coax ports are first
+        smat_test =  self.get_ant_Smat_given_f(filename, freqs[0])
+        numports = smat_test.shape[0]
+        smat_versus_freq = np.zeros((freqs.shape[0], numports, numports), dtype='complex') # the (nb_f, N, N) shaped s matrix
+        for i in range(freqs.shape[0]):
+            smat =  self.get_ant_Smat_given_f(filename, freqs[i])
+            smat_versus_freq[i, :, :] = smat
+
+        # create the network object 
+        antnet = rf.Network()
+        antnet.frequency = rf.Frequency.from_f(freqs, unit='MHz')
+        antnet.s = smat_versus_freq
+        antnet.z0 = z0s
+        antnet.name = str(name)
+        return antnet
+    
+    def set_antnet_chopped(self, freqs, filename, name=None):
+        self.antnet_chopped = self.build_antnet(freqs, filename, name)
+
+    def get_full_TWA_network_S11_S21(fullnet, f):
+        """
+        fullnet: network object for a full antenna
+        f: the frequency you want the S parameters for
+        """
+        freqs = fullnet.frequency.f_scaled
+        i_f = np.where(freqs == f)[0][0]
+        return fullnet.s[i_f][0,0], fullnet.s[i_f][0,1]
+
+    def get_fullant_given_one_length(self, length):
+        """
+        length: length of all capactors (assumes caps all have same length) [cm]
+        """
+        freqs = self.freqs_for_fullant
+
+        # antenna network 
+        antnet1 = self.build_antnet_chopped(self.freqs_for_fullant, self.antfile, name='chopped ant network')
+
+        # capacitor network 
+        cap_list = []
+        for i_port in range(self.num_straps):
+            capname = '_cap_' + str(i_port+1) + f'_port_{i_port + 2}'
+            cap_list.append(self.build_capnet_given_length(length=length, freqs=freqs, filename=self.capfile, round_level=3))
+            cap_list[i_port].name = 'l_' + cap_list[i_port].name + capname
+
+        portf = rf.Frequency.from_f(freqs, unit='MHz')
+
+        port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+        port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+
+
+        # wire them together 
+        connections = [
+            [(antnet1, 0), (port_in, 0)],
+            [(antnet1, 1), (port_out, 0)]]
+        
+        for i in range(self.num_straps):
+            connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+
+        circuit_model = rf.Circuit(connections)
+        full_network = circuit_model.network
+        return full_network
+    
+    def get_fullant_S11_S12_given_one_length(self, length, f):
+        fullnet = self.get_fullant_given_one_length(length)
+        return self.get_full_TWA_network_S11_S21(fullnet, f)
+    
+    def get_fullant_given_C_via_caps(self, C):
+        """
+        C: capacitance [F] of strap caps 
+        """
+        freqs = self.freqs_for_fullant
+
+        rf_freq_object = rf.Frequency.from_f(freqs, unit='MHz')
+
+        # antenna network 
+        antnet1 = self.build_antnet_chopped(self.freqs_for_fullant, self.antfile, name='chopped ant network')
+
+        # capacitor network 
+        capZ = 1 / (1j * 2 * rf.pi * rf_freq_object.f * C) # this is a numpy array
+        Z = np.zeros((rf_freq_object.f.shape[0],1,1), dtype='complex') # this impedence needs to be shape number of frequencies, 1, 1 
+        Z[:,0,0] = capZ
+        cap_list = []
+        for i_port in range(self.num_straps):
+            capname = 'C_' + str(i_port+1) + f'_port_{i_port + 2}'
+            cap_list.append(rf.Network(frequency=rf_freq_object, z=Z, z0=self.capz0, name=capname))
+
+        portf = rf.Frequency.from_f(freqs, unit='MHz')
+
+        port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+        port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+
+
+        # wire them together 
+        connections = [
+            [(antnet1, 0), (port_in, 0)],
+            [(antnet1, 1), (port_out, 0)]]
+        
+        for i in range(self.num_straps):
+            connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+
+        circuit_model = rf.Circuit(connections)
+        full_network = circuit_model.network
+        return full_network
+    
+    def get_fullant_S11_S12_given_C(self, C, f):
+        """
+        C: capacitance [F]
+        f: [MHz]
+        """
+        fullnet = self.get_fullant_given_C_via_caps(C)
+        return self.get_full_TWA_network_S11_S21(fullnet, f)
