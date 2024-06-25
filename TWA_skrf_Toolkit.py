@@ -29,7 +29,7 @@ class TWA_skrf_Toolkit:
         else: 
             self.delta_phi_rez = np.pi/2 
         
-        self.s_rez = np.abs(self.delta_phi / self.k_par_max)
+        self.s_rez = np.abs(self.delta_phi_rez / self.k_par_max)
         
         # geometry
         self.geometry_dict = {} # the user can add any geometric parameter and it will get printed, along with defualts
@@ -42,8 +42,17 @@ class TWA_skrf_Toolkit:
         self.antz0 = antz0  # the main antenna coax feed z0
 
     def print_geometry(self):
+        maxstring = 1
         for key in self.geometry_dict:
-            print(f'{key}: ', self.geometry_dict[key])
+            if len(key) > maxstring:
+                maxstring = len(key)
+
+        for key in self.geometry_dict:
+            gapstring = ' '*(maxstring - len(key))
+            print(f'{key}: {gapstring}{self.geometry_dict[key]}')
+
+    def add_to_geometry(self, key, value):
+        self.geometry_dict[key] = value
 
     def get_comsol_datatable(self, filename):
         data = []
@@ -98,14 +107,13 @@ class TWA_skrf_Toolkit:
         capnet.frequency = rf.Frequency.from_f(freqs, unit='MHz')
         capnet.s = S11_array
         capnet.z0 = self.capz0
-        capnet.name = str(lcapfound)
+        capnet.name = 'l = ' + str(lcapfound)
         return capnet
     
 
     def print_znorm_and_capacitance(self, network, f, toprint=True):
         """
         f: frequency in MHz
-        z0: required characteristic impedence 
         """
         freqs = network.frequency.f_scaled
         idx = np.where(freqs == f)
@@ -127,8 +135,8 @@ class TWA_skrf_Toolkit:
         ufreqs = np.unique(freqs)
         num_freqs = ufreqs.shape[0]
         i_f = np.where(ufreqs == f)[0][0]
-        start_idx = i_f*num_freqs
-        Smat = data[start_idx:(start_idx+num_ports), 1:]
+        start_idx = i_f*(self.num_straps + 2)
+        Smat = data[start_idx:(start_idx+self.num_straps + 2), 1:]
         return Smat # this is the smat for a given frequency 
     
     def build_antnet_chopped(self, freqs, filename, name=None):
@@ -154,7 +162,7 @@ class TWA_skrf_Toolkit:
     def set_antnet_chopped(self, freqs, filename, name=None):
         self.antnet_chopped = self.build_antnet(freqs, filename, name)
 
-    def get_full_TWA_network_S11_S21(fullnet, f):
+    def get_full_TWA_network_S11_S21(self, fullnet, f):
         """
         fullnet: network object for a full antenna
         f: the frequency you want the S parameters for
@@ -246,3 +254,41 @@ class TWA_skrf_Toolkit:
         """
         fullnet = self.get_fullant_given_C_via_caps(C)
         return self.get_full_TWA_network_S11_S21(fullnet, f)
+    
+    def plot_abs_S11_S21_l_scan(self, ls, f):
+        """
+        ls: a numpy array of capacitor lengths [m]
+        f: the frequency you want to look at 
+        """
+        S11v = np.array([])
+        S21v = np.array([])
+
+        for i in range(ls.shape[0]):
+            l = ls[i]
+            S11, S21 = self.get_fullant_S11_S12_given_one_length(l, f)
+            S11abs = np.abs(S11)
+            S21abs = np.abs(S21)
+            S11v = np.append(S11v, S11abs)
+            S21v = np.append(S21v, S21abs)
+
+        fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+
+        axs[0].plot(ls*100, S11v, label='|S11|')
+        axs[0].set_ylabel('|S|')
+        axs[0].set_xlabel('Cap length [cm]')
+        axs[0].grid()
+        axs[0].legend()
+
+        axs[1].plot(ls*100, S21v, label='|S21|', color='red')
+        axs[1].set_ylabel('|S|')
+        axs[1].set_xlabel('Cap length [cm]')
+        axs[1].grid()
+        axs[1].legend()
+
+        axs[2].plot(ls*100, S11v, label='|S11|')
+        axs[2].plot(ls*100, S21v, label='|S12|', color='red')
+        axs[2].set_ylabel('|S|')
+        axs[2].set_xlabel('Cap length [cm]')
+        axs[2].grid()
+        axs[2].legend()     
+        plt.show()
