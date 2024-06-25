@@ -255,7 +255,7 @@ class TWA_skrf_Toolkit:
         fullnet = self.get_fullant_given_C_via_caps(C)
         return self.get_full_TWA_network_S11_S21(fullnet, f)
     
-    def plot_abs_S11_S21_l_scan(self, ls, f):
+    def plot_abs_S11_S21_l_scan(self, ls, f, return_data=False):
         """
         ls: a numpy array of capacitor lengths [m]
         f: the frequency you want to look at 
@@ -284,6 +284,7 @@ class TWA_skrf_Toolkit:
         axs[1].set_xlabel('Cap length [cm]')
         axs[1].grid()
         axs[1].legend()
+        axs[1].set_title(f'Frequency: {f} MHz')
 
         axs[2].plot(ls*100, S11v, label='|S11|')
         axs[2].plot(ls*100, S21v, label='|S12|', color='red')
@@ -291,4 +292,7 @@ class TWA_skrf_Toolkit:
         axs[2].set_xlabel('Cap length [cm]')
         axs[2].grid()
         axs[2].legend()     
-        plt.show()
+        #plt.show()
+
+        if return_data:
+            return S11v, S21v, axs
