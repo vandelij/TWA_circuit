@@ -510,3 +510,45 @@ class TWA_skrf_Toolkit:
 
         if return_data:
             return S11v, S21v, axs
+        
+    def plot_abs_S11_S21_f_scan_from_internal_datatable(self, fs, l, return_data=False):
+        """
+        ls: a numpy array of capacitor lengths [m]
+        f: the frequency you want to look at 
+        """
+        S11v = np.array([])
+        S21v = np.array([])
+
+        for i in range(fs.shape[0]):
+            f = fs[i]
+            S11, S21 = self.get_fullant_S11_S12_given_one_length_from_internal_datatable(l, f)
+            S11abs = np.abs(S11)
+            S21abs = np.abs(S21)
+            S11v = np.append(S11v, S11abs)
+            S21v = np.append(S21v, S21abs)
+
+        fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+
+        axs[0].plot(fs, S11v, label='|S11|')
+        axs[0].set_ylabel('|S|')
+        axs[0].set_xlabel('f [MHz]')
+        axs[0].grid()
+        axs[0].legend()
+
+        axs[1].plot(fs, S21v, label='|S21|', color='red')
+        axs[1].set_ylabel('|S|')
+        axs[1].set_xlabel('f [MHz]')
+        axs[1].grid()
+        axs[1].legend()
+        axs[1].set_title(f'Cap Length: {l*100} cm')
+
+        axs[2].plot(fs, S11v, label='|S11|')
+        axs[2].plot(fs, S21v, label='|S12|', color='red')
+        axs[2].set_ylabel('|S|')
+        axs[2].set_xlabel('f [MHz]')
+        axs[2].grid()
+        axs[2].legend()     
+        #plt.show()
+
+        if return_data:
+            return S11v, S21v, axs
