@@ -2,9 +2,9 @@ import csv
 import numpy as np
 
 # user must specify the frequencies
-freqs = np.array([96,97])
-filename_label = 'Smat_ant_96_and_97_deembed'
-filename = f'circ_model/{filename_label}.csv'
+freqs = np.arange(81,112,1)
+filename_label = 'bigscan_full'
+filename = f'{filename_label}.csv'
 filename_save = f'circ_model/fixed_{filename_label}.csv'
 
 
@@ -19,8 +19,11 @@ for row in lines:
         row = str(freq) + row
         fmat_string.append(row)
 
-    elif row[0][0] == '%':
+    elif (row[0][0] == '%') and (freq_i == -1): # only save headers if its the first time 
         fmat_string.append(row)
+
+    elif row[0][0] == '%':
+        pass
 
     else:
         fmat_string.append(row)
@@ -30,3 +33,4 @@ for row in lines:
 
 with open(filename_save, 'w') as f:
     f.writelines(fmat_string)
+
