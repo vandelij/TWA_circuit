@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import csv
 import skrf as rf
+from scipy.interpolate import interp2d
 
 class TWA_skrf_Toolkit:
 
@@ -552,3 +553,19 @@ class TWA_skrf_Toolkit:
 
         if return_data:
             return S11v, S21v, axs
+        
+    def interpolate_cap_data(self, f, l):
+
+        capdata = self.captable
+        round_level = 3
+        fs = np.real(np.unique(capdata[:,0]))
+        ls = np.round(np.real(np.unique(capdata[:,1])), round_level)
+        S11_real = np.real(capdata[:,5]).reshape(fs.shape[0], ls.shape[0]) # this is the de-embeded collumn 
+        S11_imag = np.imag(capdata[:,5]).reshape(fs.shape[0], ls.shape[0]) # this is the de-embeded collumn 
+
+        fsmesh, lsmesh = np.meshgrid(fs, ls, indexing='ij')
+
+        S11_real_interpolator = interp2d(fsmesh, lsmesh, S11_real)
+        S11_imag_interpolator = interp2d(fsmesh, lsmesh, S11_imag)
+        S11 = S11_real_interpolator(f, l) + 1j*S11_imag_interpolator(f,l)
+        return S11[0]
