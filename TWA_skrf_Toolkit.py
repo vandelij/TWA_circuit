@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import csv
 import skrf as rf
-from scipy.interpolate import interp2d
+from scipy.interpolate import interp2d, interp1d
 
 class TWA_skrf_Toolkit:
 
@@ -45,6 +45,9 @@ class TWA_skrf_Toolkit:
         # set the internal data tables
         self.set_capacitor_data()
         self.set_ant_data()
+
+        # set the smat interpolator matricies for the interpolator 
+        self.set_ant_Smat_interpolator()
 
     def print_geometry(self):
         maxstring = 1
@@ -569,3 +572,40 @@ class TWA_skrf_Toolkit:
         S11_imag_interpolator = interp2d(fsmesh, lsmesh, S11_imag)
         S11 = S11_real_interpolator(f, l) + 1j*S11_imag_interpolator(f,l)
         return S11[0]
+    
+    def set_ant_Smat_interpolator(self):
+        num_ports = self.num_straps + 2
+        fs = self.freqs_for_fullant
+        s = self.build_antnet_chopped_from_internal_datatable(fs, name=None).s
+        interp_matrix_real = []
+        interp_matrix_imag = []
+
+
+        for i in range(num_ports):
+            interp_row_list_real = []
+            interp_row_list_imag = []
+            for j in range(num_ports):
+                interp_row_list_real.append(interp1d(fs, np.real(s[:,i,j]))) # interpolate the real part 
+                interp_row_list_imag.append(interp1d(fs, np.imag(s[:,i,j]))) # interpolate the imag part
+
+            interp_matrix_real.append(interp_row_list_real)
+            interp_matrix_imag.append(interp_row_list_imag)
+
+        self.interp_matrix_real = interp_matrix_real
+        self.interp_matrix_imag = interp_matrix_imag
+
+    
+    def interpolate_sant_for_any_f(self, f):
+        interp_matrix_real = self.interp_matrix_real
+        interp_matrix_imag = self.interp_matrix_imag
+
+        Smat = np.zeros((self.num_straps+2, self.num_straps+2), dtype='complex') # initialize the s matrix 
+
+        for i in range(self.num_straps+2):
+            for j in range(self.num_straps+2):
+                Smat[i,j] = interp_matrix_real[i][j](f) + 1j*interp_matrix_imag[i][j](f)
+        
+        return Smat
+
+        
+
