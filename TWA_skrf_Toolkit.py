@@ -46,7 +46,8 @@ class TWA_skrf_Toolkit:
         self.set_capacitor_data()
         self.set_ant_data()
 
-        # set the smat interpolator matricies for the interpolator 
+        # set the smat interpolator matricies for the cap and ant interpolators
+        self.set_interpolators_cap_data()
         self.set_ant_Smat_interpolator()
 
     def print_geometry(self):
@@ -556,9 +557,8 @@ class TWA_skrf_Toolkit:
 
         if return_data:
             return S11v, S21v, axs
-        
-    def interpolate_cap_data(self, f, l):
-
+    
+    def set_interpolators_cap_data(self):
         capdata = self.captable
         round_level = 3
         fs = np.real(np.unique(capdata[:,0]))
@@ -568,9 +568,11 @@ class TWA_skrf_Toolkit:
 
         fsmesh, lsmesh = np.meshgrid(fs, ls, indexing='ij')
 
-        S11_real_interpolator = interp2d(fsmesh, lsmesh, S11_real)
-        S11_imag_interpolator = interp2d(fsmesh, lsmesh, S11_imag)
-        S11 = S11_real_interpolator(f, l) + 1j*S11_imag_interpolator(f,l)
+        self.S11_real_interpolator = interp2d(fsmesh, lsmesh, S11_real)
+        self.S11_imag_interpolator = interp2d(fsmesh, lsmesh, S11_imag)
+        
+    def interpolate_cap_data(self, f, l):
+        S11 = self.S11_real_interpolator(f, l) + 1j*self.S11_imag_interpolator(f,l)
         return S11[0]
     
     def set_ant_Smat_interpolator(self):
@@ -606,6 +608,82 @@ class TWA_skrf_Toolkit:
                 Smat[i,j] = interp_matrix_real[i][j](f) + 1j*interp_matrix_imag[i][j](f)
         
         return Smat
+
+
+    def build_capnet_given_length_interpolated(self, length, freqs):
+        """
+        freqs: numpy array of the used frquencies [MHz]
+        returns: skrf network object representing a 1-port cap given any interpolated length
+        """
+        S11_array = np.zeros((freqs.shape[0], 1, 1), dtype='complex')
+        for i in range(freqs.shape[0]):
+            f = freqs[i]
+            S11 = self.interpolate_cap_data(f, length)
+            S11_array[i, 0, 0] = S11
+
+
+        # create the network object 
+        capnet = rf.Network()
+        capnet.frequency = rf.Frequency.from_f(freqs, unit='MHz')
+        capnet.s = S11_array
+        capnet.z0 = self.capz0
+        capnet.name = 'l = ' + str(length)
+        return capnet
+
+
+    def get_fullant_given_lengths_from_internal_datatable(self, lengths, symetric_mode=False):
+        """
+        lengths: a list of lengths, must be same number as the number of ports/2 for even num straps, (n-1)/2 for odd
+        if running in symetric mode. If not, then must be the same length as the number of straps 
+        """
+        freqs = self.freqs_for_fullant
+
+        # antenna network 
+        antnet1 = self.build_antnet_chopped_from_internal_datatable(self.freqs_for_fullant, name='chopped ant network')
+
+        # capacitor network 
+        if symetric_mode:
+            lengths_reverse = lengths.copy()
+            lengths_reverse.reverse()
+            if self.num_straps % 2 == 0:
+                if len(lengths_reverse) != int(self.num_straps/2):
+                    raise ValueError('The lengths array is not the correct length')
+                for i in range(len(lengths_reverse)):
+                    lengths.append(lengths_reverse[i])
+
+            elif self.num_straps % 2 != 0:
+                if len(lengths_reverse) != int((self.num_straps+1)/2):
+                    raise ValueError('The lengths array is not the correct length')
+                for i in range(1,len(lengths_reverse)):
+                    lengths.append(lengths_reverse[i])
+        else:
+            if self.num_straps != len(lengths):
+                raise ValueError('The lengths array is not the correct length')
+
+        cap_list = []
+        for i_port in range(self.num_straps):
+            capname = '_cap_' + str(i_port+1) + f'_port_{i_port + 2}'
+            cap_list.append(self.build_capnet_given_length_interpolated(length=lengths[i_port], freqs=freqs))
+            cap_list[i_port].name = 'l_' + cap_list[i_port].name + capname
+
+        portf = rf.Frequency.from_f(freqs, unit='MHz')
+
+        port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+        port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+
+
+        # wire them together 
+        connections = [
+            [(antnet1, 0), (port_in, 0)],
+            [(antnet1, 1), (port_out, 0)]]
+        
+        for i in range(self.num_straps):
+            connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+
+        circuit_model = rf.Circuit(connections)
+        full_network = circuit_model.network
+        print(lengths)
+        return full_network
 
         
 
