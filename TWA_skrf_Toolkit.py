@@ -587,8 +587,8 @@ class TWA_skrf_Toolkit:
             interp_row_list_real = []
             interp_row_list_imag = []
             for j in range(num_ports):
-                interp_row_list_real.append(interp1d(fs, np.real(s[:,i,j]))) # interpolate the real part 
-                interp_row_list_imag.append(interp1d(fs, np.imag(s[:,i,j]))) # interpolate the imag part
+                interp_row_list_real.append(interp1d(fs, np.real(s[:,i,j]), kind='cubic')) # interpolate the real part 
+                interp_row_list_imag.append(interp1d(fs, np.imag(s[:,i,j]), kind='cubic')) # interpolate the imag part
 
             interp_matrix_real.append(interp_row_list_real)
             interp_matrix_imag.append(interp_row_list_imag)
@@ -637,7 +637,8 @@ class TWA_skrf_Toolkit:
         if running in symetric mode. If not, then must be the same length as the number of straps 
         """
         freqs = self.freqs_for_fullant
-
+        if type(lengths) != list:
+            lengths = lengths.tolist()
         # antenna network 
         antnet1 = self.build_antnet_chopped_from_internal_datatable(self.freqs_for_fullant, name='chopped ant network')
 
