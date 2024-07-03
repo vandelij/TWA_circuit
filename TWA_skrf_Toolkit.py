@@ -568,8 +568,8 @@ class TWA_skrf_Toolkit:
 
         fsmesh, lsmesh = np.meshgrid(fs, ls, indexing='ij')
 
-        self.S11_real_interpolator = interp2d(fsmesh, lsmesh, S11_real)
-        self.S11_imag_interpolator = interp2d(fsmesh, lsmesh, S11_imag)
+        self.S11_real_interpolator = interp2d(fsmesh, lsmesh, S11_real, kind='cubic')
+        self.S11_imag_interpolator = interp2d(fsmesh, lsmesh, S11_imag, kind='cubic')
         
     def interpolate_cap_data(self, f, l):
         S11 = self.S11_real_interpolator(f, l) + 1j*self.S11_imag_interpolator(f,l)
