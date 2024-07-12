@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import csv
 import skrf as rf
 from scipy.interpolate import interp2d, interp1d
+from scipy.optimize import minimize
 
 class TWA_skrf_Toolkit:
 
@@ -48,7 +49,8 @@ class TWA_skrf_Toolkit:
 
         # set the smat interpolator matricies for the cap and ant interpolators
         self.set_interpolators_cap_data()
-        self.set_ant_Smat_interpolator()
+        if self.freqs_for_fullant.shape[0] > 1:
+            self.set_ant_Smat_interpolator()
 
     def print_geometry(self):
         maxstring = 1
@@ -631,14 +633,17 @@ class TWA_skrf_Toolkit:
         return capnet
 
 
-    def get_fullant_given_lengths_from_internal_datatable(self, lengths, symetric_mode=False):
+    def get_fullant_given_lengths_from_internal_datatable(self, lengths, symetric_mode=False, one_cap_type_mode=False):
         """
         lengths: a list of lengths, must be same number as the number of ports/2 for even num straps, (n-1)/2 for odd
-        if running in symetric mode. If not, then must be the same length as the number of straps 
+        if running in symetric mode. If running in one_cap_type mode, then should be a list of one value [length1].
+        if not either of these, then must be the same length as the number of straps manually specifying all caps.
         """
         freqs = self.freqs_for_fullant
         if type(lengths) != list:
             lengths = lengths.tolist()
+        # print('lengths:', lengths)
+        # print('len(lengths):', len(lengths))
         # antenna network 
         antnet1 = self.build_antnet_chopped_from_internal_datatable(self.freqs_for_fullant, name='chopped ant network')
 
@@ -654,12 +659,17 @@ class TWA_skrf_Toolkit:
 
             elif self.num_straps % 2 != 0:
                 if len(lengths_reverse) != int((self.num_straps+1)/2):
-                    raise ValueError('The lengths array is not the correct length')
+                    raise ValueError('The lengths array is not the correct length for symetric mode')
                 for i in range(1,len(lengths_reverse)):
                     lengths.append(lengths_reverse[i])
+        elif one_cap_type_mode:
+            if len(lengths) != 1:
+                raise ValueError('The lengths array is not the correct length for one_cap_type mode')
+            lengths = lengths*self.num_straps  # make the lengths array an array full of the same value
+
         else:
             if self.num_straps != len(lengths):
-                raise ValueError('The lengths array is not the correct length')
+                raise ValueError('The lengths array is not the correct length for this mode')
 
         cap_list = []
         for i_port in range(self.num_straps):
@@ -685,6 +695,190 @@ class TWA_skrf_Toolkit:
         full_network = circuit_model.network
         print(lengths)
         return full_network
+    
+    
+    def get_fullant_given_Cs_via_caps_from_internal_datatable(self, Cs, symetric_mode=False, one_cap_type_mode=False):
+        """
+        Cs: capacitance list [F] of strap caps, an array of size numstraps 
+        """
+        freqs = self.freqs_for_fullant
+        if type(Cs) != list:
+            Cs = Cs.tolist()
 
+        rf_freq_object = rf.Frequency.from_f(freqs, unit='MHz')
+
+        # antenna network 
+        antnet1 = self.build_antnet_chopped_from_internal_datatable(self.freqs_for_fullant, name='chopped ant network')
+
+        # capacitor network 
+        if symetric_mode:
+            Cs_reverse = Cs.copy()
+            Cs_reverse.reverse()
+            if self.num_straps % 2 == 0:
+                if len(Cs_reverse) != int(self.num_straps/2):
+                    raise ValueError('The Cs array is not the correct length')
+                for i in range(len(Cs_reverse)):
+                    Cs.append(Cs_reverse[i])
+
+            elif self.num_straps % 2 != 0:
+                if len(Cs_reverse) != int((self.num_straps+1)/2):
+                    raise ValueError('The Cs array is not the correct length for symetric mode')
+                for i in range(1,len(Cs_reverse)):
+                    Cs.append(Cs_reverse[i])
+        elif one_cap_type_mode:
+            if len(Cs) != 1:
+                raise ValueError('The Cs array is not the correct length for one_cap_type mode')
+            Cs = Cs*self.num_straps  # make the lengths array an array full of the same value
+
+        else:
+            if self.num_straps != len(Cs):
+                raise ValueError('The Cs array is not the correct length for this mode')
+        capZs = []
+        for i in range(len(Cs)):
+            capZ = 1 / (1j * 2 * rf.pi * rf_freq_object.f * Cs[i]) # this is a numpy array of length frequency list 
+            Z = np.zeros((rf_freq_object.f.shape[0],1,1), dtype='complex') # this impedence needs to be shape number of frequencies, 1, 1 
+            Z[:,0,0] = capZ
+            capZs.append(Z)
+
+        cap_list = []
+        for i_port in range(self.num_straps):
+            capname = 'C_' + str(i_port+1) + f'_port_{i_port + 2}'
+            cap_list.append(rf.Network(frequency=rf_freq_object, z=capZs[i_port], z0=self.capz0, name=capname))
+
+        portf = rf.Frequency.from_f(freqs, unit='MHz')
+
+        port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+        port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+
+
+        # wire them together 
+        connections = [
+            [(antnet1, 0), (port_in, 0)],
+            [(antnet1, 1), (port_out, 0)]]
+        
+        for i in range(self.num_straps):
+            connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+
+        circuit_model = rf.Circuit(connections)
+        full_network = circuit_model.network
+        return full_network
+    
+    def op_info(self, i_iter, p):
+        """
+        Print information during the fitting procedure
+        """
+        print("-" * 40)
+        print(f"i_iter = {i_iter}")
+        print("New simulation.")
+        print(f"Point is: {p}")
+
+    def run_optimization(self, initial_guess, length_bounds, S11_db_cutouff, freq_bounds, method, options, symetric_mode=False, one_cap_type_mode=False):
+        self.i_iter = 0
+        self.prms = []
+        self.errors = []
+        self.symetric_mode = symetric_mode
+        self.one_cap_type_mode = one_cap_type_mode
+        self.freq_bounds_for_optimization = freq_bounds
+        self.S11_db_cutouff = S11_db_cutouff
+        res = minimize(self.error_function,
+               initial_guess,
+               bounds=length_bounds,
+               method=method,
+               options=options)
+        
+        return res
+
+
+    def error_function(self, prm):
+
+        self.prms.append(prm)
+        self.i_iter += 1
+        self.op_info(self.i_iter, prm)
+        # Filter the results if a negative value is found
+        if any([e < 0 for e in prm]):
+            return 1e30
+        
+        network = self.get_fullant_given_lengths_from_internal_datatable(lengths=prm, symetric_mode=self.symetric_mode, 
+                                                                         one_cap_type_mode=self.one_cap_type_mode) 
+
+        S11_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
+
+        for i in range(S11_array.shape[0]):
+            S11, S21 = self.get_full_TWA_network_S11_S21(fullnet=network, f=self.freqs_for_fullant[i])
+            S11_array[i] = S11
+
+
+        err = 0
+
+        for i in range(S11_array.shape[0]):
+            
+            S11_mag = np.abs(S11_array[i])
+            S11_db = 20*np.log10(S11_mag)
+            # only contribute to error if we are between the desired frequency range 
+            if self.freqs_for_fullant[i] >= self.freq_bounds_for_optimization[0] and self.freqs_for_fullant[i] <= self.freq_bounds_for_optimization[1]:
+            
+                if S11_db <= self.S11_db_cutouff: 
+                    err = err + 0
+                else:
+                    err = err + (S11_db - self.S11_db_cutouff)**2 # squared error if the value of S11 is above -30 
+        
+        print(f"Average absolute error is : {err:.2e}")
+        self.errors.append(err)
+        return err    
+
+
+    def run_optimization_explicitC(self, initial_guess, cap_bounds, S11_db_cutouff, freq_bounds, method, options, symetric_mode=False, one_cap_type_mode=False):
+        self.i_iter = 0
+        self.prms = []
+        self.errors = []
+        self.symetric_mode = symetric_mode
+        self.one_cap_type_mode = one_cap_type_mode
+        self.freq_bounds_for_optimization = freq_bounds
+        self.S11_db_cutouff = S11_db_cutouff
+        res = minimize(self.error_function_explicitC,
+               initial_guess,
+               bounds=cap_bounds,
+               method=method,
+               options=options)
+        
+        return res
+
+
+    def error_function_explicitC(self, prm):
+
+        self.prms.append(prm)
+        self.i_iter += 1
+        self.op_info(self.i_iter, prm)
+        # Filter the results if a negative value is found
+        if any([e < 0 for e in prm]):
+            return 1e30
+        
+        network = self.get_fullant_given_Cs_via_caps_from_internal_datatable(Cs=prm, symetric_mode=self.symetric_mode, 
+                                                                         one_cap_type_mode=self.one_cap_type_mode) 
+
+        S11_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
+
+        for i in range(S11_array.shape[0]):
+            S11, S21 = self.get_full_TWA_network_S11_S21(fullnet=network, f=self.freqs_for_fullant[i])
+            S11_array[i] = S11
+
+
+        err = 0
+
+        for i in range(S11_array.shape[0]):
+            
+            S11_mag = np.abs(S11_array[i])
+            S11_db = 20*np.log10(S11_mag)
+            # only contribute to error if we are between the desired frequency range 
+            if self.freqs_for_fullant[i] >= self.freq_bounds_for_optimization[0] and self.freqs_for_fullant[i] <= self.freq_bounds_for_optimization[1]:
+            
+                if S11_db <= self.S11_db_cutouff: 
+                    err = err + 0
+                else:
+                    err = err + (S11_db - self.S11_db_cutouff)**2 # squared error if the value of S11 is above -30 
+        
+        print(f"Average absolute error is : {err:.2e}")
+        self.errors.append(err)
+        return err 
         
 
