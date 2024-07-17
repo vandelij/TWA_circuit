@@ -921,98 +921,100 @@ class TWA_skrf_Toolkit:
         
         return res
     
-    def plot_S11_S21_v_f_using_caps_to_increase_f_range(self, lengths, new_f_range, f0, symetric_mode=False, one_cap_type_mode=False):
-        """
-        lengths: the optimized lengths form the narrower f range
-        new_f_range: the larger frequency range one wishes to plot over, a numpy array
-        f0: the center frequency in units of MHz. This is the f at which the C of the capacitor is extracted from 
-        """
-        caps = []
-        Cs = []
 
-        for i in range(len(lengths)):
-            caps.append(self.build_capnet_given_length_interpolated(length=lengths[i], freqs=self.freqs_for_fullant))
+    # The below function does not work because the antenna network can not be wired to a capacitor of arb. f. 
+    # def plot_S11_S21_v_f_using_caps_to_increase_f_range(self, lengths, new_f_range, f0, symetric_mode=False, one_cap_type_mode=False):
+    #     """
+    #     lengths: the optimized lengths form the narrower f range
+    #     new_f_range: the larger frequency range one wishes to plot over, a numpy array
+    #     f0: the center frequency in units of MHz. This is the f at which the C of the capacitor is extracted from 
+    #     """
+    #     caps = []
+    #     Cs = []
+
+    #     for i in range(len(lengths)):
+    #         caps.append(self.build_capnet_given_length_interpolated(length=lengths[i], freqs=self.freqs_for_fullant))
         
-        for j in range(len(caps)):
-            Z, C = self.print_znorm_and_capacitance(caps[j], f0, toprint=False)
-            Cs.append(C)
+    #     for j in range(len(caps)):
+    #         Z, C = self.print_znorm_and_capacitance(caps[j], f0, toprint=False)
+    #         Cs.append(C)
 
-        ant_with_Cs = self.get_fullant_given_Cs_via_caps_from_internal_datatable(Cs, 
-                                                                symetric_mode=symetric_mode,
-                                                                one_cap_type_mode=one_cap_type_mode,
-                                                                different_freq=True,
-                                                                new_freqs=new_f_range)
+    #     ant_with_Cs = self.get_fullant_given_Cs_via_caps_from_internal_datatable(Cs, 
+    #                                                             symetric_mode=symetric_mode,
+    #                                                             one_cap_type_mode=one_cap_type_mode,
+    #                                                             different_freq=True,
+    #                                                             new_freqs=new_f_range)
         
-        ant_with_lengths = self.get_fullant_given_lengths_from_internal_datatable(lengths,
-                                                                                  symetric_mode=symetric_mode,
-                                                                                  one_cap_type_mode=one_cap_type_mode)
+    #     ant_with_lengths = self.get_fullant_given_lengths_from_internal_datatable(lengths,
+    #                                                                               symetric_mode=symetric_mode,
+    #                                                                               one_cap_type_mode=one_cap_type_mode)
 
-        S11_with_Cs_array = np.zeros_like(new_f_range, dtype='complex')
-        S21_with_Cs_array = np.zeros_like(new_f_range, dtype='complex')
+    #     S11_with_Cs_array = np.zeros_like(new_f_range, dtype='complex')
+    #     S21_with_Cs_array = np.zeros_like(new_f_range, dtype='complex')
 
-        S11_with_lengths_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
-        S21_with_lengths_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
+    #     S11_with_lengths_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
+    #     S21_with_lengths_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
 
-        # loop over frequencies and load up the S parameters for each frequency for new frequency range cap model 
-        for i in range(S11_with_Cs_array.shape[0]):
-            S11, S21 = self.get_full_TWA_network_S11_S21(fullnet=ant_with_Cs, f=new_f_range[i])
-            S11_with_Cs_array[i] = S11
-            S21_with_Cs_array[i] = S21
+    #     # loop over frequencies and load up the S parameters for each frequency for new frequency range cap model 
+    #     for i in range(S11_with_Cs_array.shape[0]):
+    #         S11, S21 = self.get_full_TWA_network_S11_S21(fullnet=ant_with_Cs, f=new_f_range[i])
+    #         S11_with_Cs_array[i] = S11
+    #         S21_with_Cs_array[i] = S21
 
-        # loop over frequencies and load up the S parameters for each frequency for old model 
-        for i in range(S11_with_lengths_array.shape[0]):
-            S11, S21 = self.get_full_TWA_network_S11_S21(fullnet=ant_with_lengths, f=self.freqs_for_fullant[i])
-            S11_with_lengths_array[i] = S11
-            S21_with_lengths_array[i] = S21
+    #     # loop over frequencies and load up the S parameters for each frequency for old model 
+    #     for i in range(S11_with_lengths_array.shape[0]):
+    #         S11, S21 = self.get_full_TWA_network_S11_S21(fullnet=ant_with_lengths, f=self.freqs_for_fullant[i])
+    #         S11_with_lengths_array[i] = S11
+    #         S21_with_lengths_array[i] = S21
 
-        S11_mag_with_Cs_array = np.zeros_like(new_f_range)
-        S11_db_with_Cs_array = np.zeros_like(new_f_range)   
-        S21_mag_with_Cs_array = np.zeros_like(new_f_range)
-        S21_db_with_Cs_array = np.zeros_like(new_f_range)      
+    #     S11_mag_with_Cs_array = np.zeros_like(new_f_range)
+    #     S11_db_with_Cs_array = np.zeros_like(new_f_range)   
+    #     S21_mag_with_Cs_array = np.zeros_like(new_f_range)
+    #     S21_db_with_Cs_array = np.zeros_like(new_f_range)      
 
-        S11_mag_with_lengths_array = np.zeros_like(self.freqs_for_fullant)
-        S11_db_with_lengths_array = np.zeros_like(self.freqs_for_fullant)
-        S21_mag_with_lengths_array = np.zeros_like(self.freqs_for_fullant)
-        S21_db_with_lengths_array = np.zeros_like(self.freqs_for_fullant)
+    #     S11_mag_with_lengths_array = np.zeros_like(self.freqs_for_fullant)
+    #     S11_db_with_lengths_array = np.zeros_like(self.freqs_for_fullant)
+    #     S21_mag_with_lengths_array = np.zeros_like(self.freqs_for_fullant)
+    #     S21_db_with_lengths_array = np.zeros_like(self.freqs_for_fullant)
 
-        # now, load up arrays of the S parameters for the new range in mag and dB scale. 
-        for i in range(new_f_range.shape[0]):
-            S11_mag_with_Cs_array[i] = np.abs(S11_with_Cs_array[i])
-            S11_db_with_Cs_array[i] = 20*np.log10(S11_mag_with_Cs_array[i])
-            S21_mag_with_Cs_array[i] = np.abs(S21_with_Cs_array[i])
-            S21_db_with_Cs_array[i] =  20*np.log10(S21_mag_with_Cs_array[i])
+    #     # now, load up arrays of the S parameters for the new range in mag and dB scale. 
+    #     for i in range(new_f_range.shape[0]):
+    #         S11_mag_with_Cs_array[i] = np.abs(S11_with_Cs_array[i])
+    #         S11_db_with_Cs_array[i] = 20*np.log10(S11_mag_with_Cs_array[i])
+    #         S21_mag_with_Cs_array[i] = np.abs(S21_with_Cs_array[i])
+    #         S21_db_with_Cs_array[i] =  20*np.log10(S21_mag_with_Cs_array[i])
 
-        # now, load up arrays of the S parameters for the old range in mag and dB scale. 
-        for i in range(self.freqs_for_fullant.shape[0]):
-            S11_mag_with_lengths_array[i] = np.abs(S11_with_lengths_array[i])
-            S11_db_with_lengths_array[i] = 20*np.log10(S11_mag_with_lengths_array[i])
-            S21_mag_with_lengths_array[i] = np.abs(S21_with_lengths_array[i])
-            S21_db_with_lengths_array[i] =  20*np.log10(S21_mag_with_lengths_array[i])
+    #     # now, load up arrays of the S parameters for the old range in mag and dB scale. 
+    #     for i in range(self.freqs_for_fullant.shape[0]):
+    #         S11_mag_with_lengths_array[i] = np.abs(S11_with_lengths_array[i])
+    #         S11_db_with_lengths_array[i] = 20*np.log10(S11_mag_with_lengths_array[i])
+    #         S21_mag_with_lengths_array[i] = np.abs(S21_with_lengths_array[i])
+    #         S21_db_with_lengths_array[i] =  20*np.log10(S21_mag_with_lengths_array[i])
 
-        # now, generate the figure 
+    #     # now, generate the figure 
 
-        fig, ax = plt.subplots(2,2,figsize=(10,10))
+    #     fig, ax = plt.subplots(2,2,figsize=(10,10))
 
-        ax[0,0].plot(new_f_range, S11_mag_with_Cs_array, marker='.', color='blue', label='via C')
-        ax[0,0].plot(self.freqs_for_fullant, S11_mag_with_lengths_array, marker='.', color='darkblue', label='via length')
-        ax[0,0].grid()
-        ax[0,0].set_xlabel('f [MHz]')
-        ax[0,0].set_ylabel('|S11|')
+    #     ax[0,0].plot(new_f_range, S11_mag_with_Cs_array, marker='.', color='blue', label='via C')
+    #     ax[0,0].plot(self.freqs_for_fullant, S11_mag_with_lengths_array, marker='.', color='darkblue', label='via length')
+    #     ax[0,0].grid()
+    #     ax[0,0].set_xlabel('f [MHz]')
+    #     ax[0,0].set_ylabel('|S11|')
 
-        ax[0,1].plot(new_f_range, S11_db_with_Cs_array, marker='.', color='blue', label='via C')
-        ax[0,1].plot(self.freqs_for_fullant, S11_db_with_lengths_array, marker='.', color='darkblue', label='via length')
-        ax[0,1].grid()
-        ax[0,1].set_xlabel('f [MHz]')
-        ax[0,1].set_ylabel('20log10(|S11|)')
+    #     ax[0,1].plot(new_f_range, S11_db_with_Cs_array, marker='.', color='blue', label='via C')
+    #     ax[0,1].plot(self.freqs_for_fullant, S11_db_with_lengths_array, marker='.', color='darkblue', label='via length')
+    #     ax[0,1].grid()
+    #     ax[0,1].set_xlabel('f [MHz]')
+    #     ax[0,1].set_ylabel('20log10(|S11|)')
 
-        ax[1,0].plot(new_f_range, S21_mag_with_Cs_array, marker='.', color='red', label='via C')
-        ax[1,0].plot(self.freqs_for_fullant, S21_mag_with_lengths_array, marker='.', color='darkred', label='via length')
-        ax[1,0].grid()
-        ax[1,0].set_xlabel('f [MHz]')
-        ax[1,0].set_ylabel('|S21|')
+    #     ax[1,0].plot(new_f_range, S21_mag_with_Cs_array, marker='.', color='red', label='via C')
+    #     ax[1,0].plot(self.freqs_for_fullant, S21_mag_with_lengths_array, marker='.', color='darkred', label='via length')
+    #     ax[1,0].grid()
+    #     ax[1,0].set_xlabel('f [MHz]')
+    #     ax[1,0].set_ylabel('|S21|')
 
-        ax[1,1].plot(new_f_range, S21_db_with_Cs_array, marker='.', color='red', label='via C')
-        ax[1,1].plot(self.freqs_for_fullant, S21_db_with_lengths_array, marker='.', color='darkred', label='via length')
-        ax[1,1].grid()
-        ax[1,1].set_xlabel('f [MHz]')
-        ax[1,1].set_ylabel('20log10(|S21|)')
+    #     ax[1,1].plot(new_f_range, S21_db_with_Cs_array, marker='.', color='red', label='via C')
+    #     ax[1,1].plot(self.freqs_for_fullant, S21_db_with_lengths_array, marker='.', color='darkred', label='via length')
+    #     ax[1,1].grid()
+    #     ax[1,1].set_xlabel('f [MHz]')
+    #     ax[1,1].set_ylabel('20log10(|S21|)')
