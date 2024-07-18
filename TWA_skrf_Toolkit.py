@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import csv
 import skrf as rf
-from scipy.interpolate import interp2d, interp1d
+from scipy.interpolate import interp2d, interp1d, RectBivariateSpline, PchipInterpolator
 from scipy.optimize import minimize, differential_evolution
 
 class TWA_skrf_Toolkit:
@@ -568,10 +568,12 @@ class TWA_skrf_Toolkit:
         S11_real = np.real(capdata[:,5]).reshape(fs.shape[0], ls.shape[0]) # this is the de-embeded collumn 
         S11_imag = np.imag(capdata[:,5]).reshape(fs.shape[0], ls.shape[0]) # this is the de-embeded collumn 
 
-        fsmesh, lsmesh = np.meshgrid(fs, ls, indexing='ij')
+        self.S11_real_interpolator = RectBivariateSpline(fs, ls, S11_real)
+        self.S11_imag_interpolator = RectBivariateSpline(fs, ls, S11_imag)
+        # fsmesh, lsmesh = np.meshgrid(fs, ls, indexing='ij')
 
-        self.S11_real_interpolator = interp2d(fsmesh, lsmesh, S11_real, kind='cubic')
-        self.S11_imag_interpolator = interp2d(fsmesh, lsmesh, S11_imag, kind='cubic')
+        # self.S11_real_interpolator = interp2d(fsmesh, lsmesh, S11_real, kind='linear') # TODO: switching from cubic to linear
+        # self.S11_imag_interpolator = interp2d(fsmesh, lsmesh, S11_imag, kind='linear')
         
     def interpolate_cap_data(self, f, l):
         S11 = self.S11_real_interpolator(f, l) + 1j*self.S11_imag_interpolator(f,l)
@@ -588,9 +590,9 @@ class TWA_skrf_Toolkit:
         for i in range(num_ports):
             interp_row_list_real = []
             interp_row_list_imag = []
-            for j in range(num_ports):
-                interp_row_list_real.append(interp1d(fs, np.real(s[:,i,j]), kind='cubic')) # interpolate the real part 
-                interp_row_list_imag.append(interp1d(fs, np.imag(s[:,i,j]), kind='cubic')) # interpolate the imag part
+            for j in range(num_ports):  #TODO: changed from interp1d to PchipInterpolator
+                interp_row_list_real.append(PchipInterpolator(fs, np.real(s[:,i,j]))) # interpolate the real part 
+                interp_row_list_imag.append(PchipInterpolator(fs, np.imag(s[:,i,j]))) # interpolate the imag part
 
             interp_matrix_real.append(interp_row_list_real)
             interp_matrix_imag.append(interp_row_list_imag)
