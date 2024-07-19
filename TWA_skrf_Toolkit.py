@@ -922,8 +922,93 @@ class TWA_skrf_Toolkit:
         res = differential_evolution(self.error_function_explicitC, bounds=cap_bounds, strategy=strategy)
         
         return res
-    
 
+    def run_differential_evolution_global_op_l_matters(self, 
+                                            length_bounds,
+                                            S11_db_cutouff,
+                                            freq_bounds,
+                                            beta_length_op,
+                                            strategy='best1bin',
+                                            symetric_mode=False,
+                                            one_cap_type_mode=False):
+        """
+        This version of the optimization also aims to force the lengths to be similar with weight beta
+        """
+        self.i_iter = 0
+        self.prms = []
+        self.errors = []
+        self.symetric_mode = symetric_mode
+        self.one_cap_type_mode = one_cap_type_mode
+        self.freq_bounds_for_optimization = freq_bounds
+        self.S11_db_cutouff = S11_db_cutouff
+        self.beta_length_op = beta_length_op
+        res = differential_evolution(self.error_function_l_matters, bounds=length_bounds, strategy=strategy)
+        
+        return res
+     
+    def error_function_l_matters(self, prm):
+
+        self.prms.append(prm)
+        self.i_iter += 1
+        self.op_info(self.i_iter, prm)
+        # Filter the results if a negative value is found
+        if any([e < 0 for e in prm]):
+            return 1e30
+        
+        network = self.get_fullant_given_lengths_from_internal_datatable(lengths=prm, symetric_mode=self.symetric_mode, 
+                                                                         one_cap_type_mode=self.one_cap_type_mode) 
+
+        S11_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
+
+        for i in range(S11_array.shape[0]):
+            S11, S21 = self.get_full_TWA_network_S11_S21(fullnet=network, f=self.freqs_for_fullant[i])
+            S11_array[i] = S11
+
+
+        err = 0
+
+        for i in range(S11_array.shape[0]):
+            
+            S11_mag = np.abs(S11_array[i])
+            S11_db = 20*np.log10(S11_mag)
+            # only contribute to error if we are between the desired frequency range 
+            if self.freqs_for_fullant[i] >= self.freq_bounds_for_optimization[0] and self.freqs_for_fullant[i] <= self.freq_bounds_for_optimization[1]:
+            
+                if S11_db <= self.S11_db_cutouff: 
+                    err = err + 0
+                else:
+                    err = err + (S11_db - self.S11_db_cutouff)**2 # squared error if the value of S11 is above -30 
+
+            # New section with error created via the lengths 
+            if self.symetric_mode:
+                length_sum = 0
+                for i in range(len(prm)-1):
+                    length_sum += 2*prm[i]
+                length_av = (length_sum + prm[-1])/self.num_straps 
+
+                length_error = np.sum(2*(np.array(prm[:-1]) - length_av)**2) + (prm[-1] - length_av)**2
+                length_error = self.beta_length_op*length_error/length_av**2
+
+            elif self.one_cap_type_mode:
+                raise ValueError('You cannot use this function with one_cap_type_mode==True: the caps are all the same')
+            
+            else:
+                length_sum = 0
+
+                for i in range(len(prm)):
+                    length_sum += prm[i]
+
+                length_av = (length_sum)/self.num_straps
+                length_error = np.sum((np.array(prm) - length_av)**2)
+                length_error = self.beta_length_op*length_error/length_av**2  
+
+            err += length_error            
+
+
+        
+        print(f"Average absolute error is : {err:.2e}")
+        self.errors.append(err)
+        return err    
     # The below function does not work because the antenna network can not be wired to a capacitor of arb. f. 
     # def plot_S11_S21_v_f_using_caps_to_increase_f_range(self, lengths, new_f_range, f0, symetric_mode=False, one_cap_type_mode=False):
     #     """
