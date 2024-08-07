@@ -635,7 +635,10 @@ class TWA_skrf_Toolkit:
         return capnet
 
 
-    def get_fullant_given_lengths_from_internal_datatable(self, lengths, symetric_mode=False, one_cap_type_mode=False):
+    def get_fullant_given_lengths_from_internal_datatable(self, lengths, symetric_mode=False,
+                                                          one_cap_type_mode=False,
+                                                          end_cap_mode=False,
+                                                          return_circ=False):
         """
         lengths: a list of lengths, must be same number as the number of ports/2 for even num straps, (n-1)/2 for odd
         if running in symetric mode. If running in one_cap_type mode, then should be a list of one value [length1].
@@ -669,6 +672,13 @@ class TWA_skrf_Toolkit:
                 raise ValueError('The lengths array is not the correct length for one_cap_type mode')
             lengths = lengths*self.num_straps  # make the lengths array an array full of the same value
 
+        elif end_cap_mode:
+            if len(lengths) != 2:
+                raise ValueError('The lengths array is not the correct length for end_cap_mode')
+            
+            endcaps = lengths[0]
+            midcaps = lengths[1]
+            lengths = [endcaps] + (self.num_straps - 2)*[midcaps] + [endcaps]
         else:
             if self.num_straps != len(lengths):
                 raise ValueError('The lengths array is not the correct length for this mode')
@@ -696,10 +706,15 @@ class TWA_skrf_Toolkit:
         circuit_model = rf.Circuit(connections)
         full_network = circuit_model.network
         print(lengths)
-        return full_network
+
+        # if the user requests the full circuit, return the circuit
+        if return_circ:
+            return circuit_model
+        else:
+            return full_network
     
     
-    def get_fullant_given_Cs_via_caps_from_internal_datatable(self, Cs, symetric_mode=False, one_cap_type_mode=False, different_freq=False, new_freqs=np.array([])):
+    def get_fullant_given_Cs_via_caps_from_internal_datatable(self, Cs, symetric_mode=False, one_cap_type_mode=False, end_cap_mode=False, different_freq=False, new_freqs=np.array([])):
         """
         Cs: capacitance list [F] of strap caps, an array of size numstraps 
         """
@@ -735,6 +750,14 @@ class TWA_skrf_Toolkit:
             if len(Cs) != 1:
                 raise ValueError('The Cs array is not the correct length for one_cap_type mode')
             Cs = Cs*self.num_straps  # make the lengths array an array full of the same value
+
+        elif end_cap_mode:
+            if len(Cs) != 2:
+                raise ValueError('The Cs array is not the correct length for end_cap_mode')
+            
+            endcaps = Cs[0]
+            midcaps = Cs[1]
+            Cs = [endcaps] + (self.num_straps - 2)*[midcaps] + [endcaps]
 
         else:
             if self.num_straps != len(Cs):
@@ -778,12 +801,13 @@ class TWA_skrf_Toolkit:
         print("New simulation.")
         print(f"Point is: {p}")
 
-    def run_optimization(self, initial_guess, length_bounds, S11_db_cutouff, freq_bounds, method, options, symetric_mode=False, one_cap_type_mode=False):
+    def run_optimization(self, initial_guess, length_bounds, S11_db_cutouff, freq_bounds, method, options, symetric_mode=False, one_cap_type_mode=False, end_cap_mode=False):
         self.i_iter = 0
         self.prms = []
         self.errors = []
         self.symetric_mode = symetric_mode
         self.one_cap_type_mode = one_cap_type_mode
+        self.end_cap_mode = end_cap_mode
         self.freq_bounds_for_optimization = freq_bounds
         self.S11_db_cutouff = S11_db_cutouff
         res = minimize(self.error_function,
@@ -805,7 +829,8 @@ class TWA_skrf_Toolkit:
             return 1e30
         
         network = self.get_fullant_given_lengths_from_internal_datatable(lengths=prm, symetric_mode=self.symetric_mode, 
-                                                                         one_cap_type_mode=self.one_cap_type_mode) 
+                                                                         one_cap_type_mode=self.one_cap_type_mode,
+                                                                         end_cap_mode=self.end_cap_mode) 
 
         S11_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
 
@@ -833,12 +858,13 @@ class TWA_skrf_Toolkit:
         return err    
 
 
-    def run_optimization_explicitC(self, initial_guess, cap_bounds, S11_db_cutouff, freq_bounds, method, options, symetric_mode=False, one_cap_type_mode=False):
+    def run_optimization_explicitC(self, initial_guess, cap_bounds, S11_db_cutouff, freq_bounds, method, options, symetric_mode=False, one_cap_type_mode=False, end_cap_mode=False):
         self.i_iter = 0
         self.prms = []
         self.errors = []
         self.symetric_mode = symetric_mode
         self.one_cap_type_mode = one_cap_type_mode
+        self.end_cap_mode = end_cap_mode
         self.freq_bounds_for_optimization = freq_bounds
         self.S11_db_cutouff = S11_db_cutouff
         res = minimize(self.error_function_explicitC,
@@ -860,7 +886,8 @@ class TWA_skrf_Toolkit:
             return 1e30
         
         network = self.get_fullant_given_Cs_via_caps_from_internal_datatable(Cs=prm, symetric_mode=self.symetric_mode, 
-                                                                         one_cap_type_mode=self.one_cap_type_mode) 
+                                                                         one_cap_type_mode=self.one_cap_type_mode,
+                                                                         end_cap_mode=self.end_cap_mode) 
 
         S11_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
 
@@ -893,12 +920,14 @@ class TWA_skrf_Toolkit:
                                             freq_bounds,
                                             strategy='best1bin',
                                             symetric_mode=False,
-                                            one_cap_type_mode=False):
+                                            one_cap_type_mode=False,
+                                            end_cap_mode=False):
         self.i_iter = 0
         self.prms = []
         self.errors = []
         self.symetric_mode = symetric_mode
         self.one_cap_type_mode = one_cap_type_mode
+        self.end_cap_mode = end_cap_mode
         self.freq_bounds_for_optimization = freq_bounds
         self.S11_db_cutouff = S11_db_cutouff
         res = differential_evolution(self.error_function, bounds=length_bounds, strategy=strategy)
@@ -911,12 +940,14 @@ class TWA_skrf_Toolkit:
                                             freq_bounds,
                                             strategy='best1bin',
                                             symetric_mode=False,
-                                            one_cap_type_mode=False):
+                                            one_cap_type_mode=False,
+                                            end_cap_mode=False):
         self.i_iter = 0
         self.prms = []
         self.errors = []
         self.symetric_mode = symetric_mode
         self.one_cap_type_mode = one_cap_type_mode
+        self.end_cap_mode = end_cap_mode
         self.freq_bounds_for_optimization = freq_bounds
         self.S11_db_cutouff = S11_db_cutouff
         res = differential_evolution(self.error_function_explicitC, bounds=cap_bounds, strategy=strategy)
@@ -930,7 +961,8 @@ class TWA_skrf_Toolkit:
                                             beta_length_op,
                                             strategy='best1bin',
                                             symetric_mode=False,
-                                            one_cap_type_mode=False):
+                                            one_cap_type_mode=False,
+                                            end_cap_mode=False):
         """
         This version of the optimization also aims to force the lengths to be similar with weight beta
         """
@@ -939,6 +971,7 @@ class TWA_skrf_Toolkit:
         self.errors = []
         self.symetric_mode = symetric_mode
         self.one_cap_type_mode = one_cap_type_mode
+        self.end_cap_mode = end_cap_mode
         self.freq_bounds_for_optimization = freq_bounds
         self.S11_db_cutouff = S11_db_cutouff
         self.beta_length_op = beta_length_op
@@ -948,6 +981,11 @@ class TWA_skrf_Toolkit:
      
     def error_function_l_matters(self, prm):
 
+        """
+        This error function uses a new parameter, self.beta_length_op, to add error when the cap lengths are not
+        close to eachother, which is beta*sum((length - average length)^2) divided by the square of the average length. 
+        """
+
         self.prms.append(prm)
         self.i_iter += 1
         self.op_info(self.i_iter, prm)
@@ -956,7 +994,8 @@ class TWA_skrf_Toolkit:
             return 1e30
         
         network = self.get_fullant_given_lengths_from_internal_datatable(lengths=prm, symetric_mode=self.symetric_mode, 
-                                                                         one_cap_type_mode=self.one_cap_type_mode) 
+                                                                         one_cap_type_mode=self.one_cap_type_mode,
+                                                                         end_cap_mode=self.end_cap_mode) 
 
         S11_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
 
@@ -979,7 +1018,7 @@ class TWA_skrf_Toolkit:
                 else:
                     err = err + (S11_db - self.S11_db_cutouff)**2 # squared error if the value of S11 is above -30 
 
-            # New section with error created via the lengths 
+            # New section with error created via the lengths not being similar 
             if self.symetric_mode:
                 length_sum = 0
                 for i in range(len(prm)-1):
@@ -1008,7 +1047,48 @@ class TWA_skrf_Toolkit:
         
         print(f"Average absolute error is : {err:.2e}")
         self.errors.append(err)
-        return err    
+        return err 
+
+    def analytic_power_spectrum_general_phase_diff(self, npar, strap_width_key, strap_sep_key, freq, phase_array):
+        """
+        npar: n|| = k|| c / omega
+        strap_width_key: key of the strap width in self.geometry_dict
+        strap_sep_key: key of the strap seperation in meters in self.geometry_dict
+        freq: frequency in Hz of the spectrum
+        phase_array: numpy array of all the strap phases in radians 
+
+        from equation 1.38 in Greg Wallace's thesis Behavior of Lower Hybrid Waves in the Scrape-Off Layer of a Diverted Tokamak
+        """
+        d_strap = self.geometry_dict[strap_sep_key]
+        w_strap = self.geometry_dict[strap_width_key]
+        w = 2*np.pi*freq
+        insin = npar*w_strap*w/(2*self.clight)
+        
+        # deal with the sinc function zero 
+        if npar == 0:
+            term1 = 1
+        else: 
+            term1 = np.sin(insin)**2 / npar**2
+
+        sum1 = 0
+        j = 0
+        for phase in phase_array:
+            beta = npar*(w/self.clight)*(j*d_strap) # this ignores w_strap/2, as discussed in Greg Wallace's thesis 
+            sum1 += np.exp(-1j*(beta + phase))
+            j += 1
+
+        sum2 = 0
+        j = 0
+        for phase in phase_array:
+            beta = npar*(w/self.clight)*(j*d_strap) # this ignores w_strap/2, as discussed in Greg Wallace's thesis
+            sum2 += np.exp(+1j*(beta + phase))
+            j += 1
+
+        return term1 * sum1 * sum2 
+
+
+
+
     # The below function does not work because the antenna network can not be wired to a capacitor of arb. f. 
     # def plot_S11_S21_v_f_using_caps_to_increase_f_range(self, lengths, new_f_range, f0, symetric_mode=False, one_cap_type_mode=False):
     #     """
