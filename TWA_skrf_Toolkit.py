@@ -7,7 +7,7 @@ from scipy.optimize import minimize, differential_evolution
 
 class TWA_skrf_Toolkit:
 
-    def __init__(self, num_straps, f0, k_par_max, capz0, antz0, freqs_for_fullant, capfile, antfile):
+    def __init__(self, num_straps, f0, k_par_max, capz0, antz0, freqs_for_fullant, capfile, antfile, center_fed_mode=False):
         """
         freqs_for_fullant: frequency np array in [MHz] 
         capfile: path to comsol output csv file containing freq, length, S11... on each row
@@ -20,6 +20,7 @@ class TWA_skrf_Toolkit:
         self.freqs_for_fullant = freqs_for_fullant
         self.capfile = capfile
         self.antfile = antfile 
+        self.center_fed_mode = center_fed_mode
 
         # default values
         self.clight = 299792458 # m/s 
@@ -144,23 +145,42 @@ class TWA_skrf_Toolkit:
     def get_ant_Smat_given_f(self, filename, f):
         data, headers = self.get_comsol_datatable(filename)
         num_ports = data[0,:].shape[0] - 1
-        self.num_ports_chopped_ant = num_ports - 2 # the number of "chopped" cap ports, one per strap 
-        if self.num_ports_chopped_ant != self.num_straps:
-            raise ValueError(f'The number of straps {self.num_straps} does not match nnumber of chopped ports {self.num_ports_chopped_ant}')
-        
-        freqs = np.real(data[:, 0])
-        ufreqs = np.unique(freqs)
-        num_freqs = ufreqs.shape[0]
-        i_f = np.where(ufreqs == f)[0][0]
-        start_idx = i_f*(self.num_straps + 2)
-        Smat = data[start_idx:(start_idx+self.num_straps + 2), 1:]
+
+        if self.center_fed_mode == True:
+            self.num_ports_chopped_ant = num_ports - 3 # the number of "chopped" cap ports, one per strap 
+            if self.num_ports_chopped_ant != self.num_straps:
+                raise ValueError(f'The number of straps {self.num_straps} does not match number of chopped ports {self.num_ports_chopped_ant}')
+            
+            freqs = np.real(data[:, 0])
+            ufreqs = np.unique(freqs)
+            num_freqs = ufreqs.shape[0]
+            i_f = np.where(ufreqs == f)[0][0]
+            start_idx = i_f*(self.num_straps + 3)
+            Smat = data[start_idx:(start_idx+self.num_straps + 3), 1:]
+
+        else:
+            self.num_ports_chopped_ant = num_ports - 2 # the number of "chopped" cap ports, one per strap 
+            if self.num_ports_chopped_ant != self.num_straps:
+                raise ValueError(f'The number of straps {self.num_straps} does not match number of chopped ports {self.num_ports_chopped_ant}')
+            
+            freqs = np.real(data[:, 0])
+            ufreqs = np.unique(freqs)
+            num_freqs = ufreqs.shape[0]
+            i_f = np.where(ufreqs == f)[0][0]
+            start_idx = i_f*(self.num_straps + 2)
+            Smat = data[start_idx:(start_idx+self.num_straps + 2), 1:]
+
         return Smat # this is the smat for a given frequency 
     
     def build_antnet_chopped(self, freqs, filename, name=None):
         """
         freqs: a numpy array of frquencies in MHz
         """
-        z0s = [self.antz0, self.antz0] + [self.capz0]*self.num_straps # create a list of the antenna port z0s. The two coax ports are first
+        if self.center_fed_mode == True:
+            z0s = [self.antz0, self.antz0, self.antz0] + [self.capz0]*self.num_straps # create a list of the antenna port z0s. The two coax ports are first
+        else:
+            z0s = [self.antz0, self.antz0] + [self.capz0]*self.num_straps
+
         smat_test =  self.get_ant_Smat_given_f(filename, freqs[0])
         numports = smat_test.shape[0]
         smat_versus_freq = np.zeros((freqs.shape[0], numports, numports), dtype='complex') # the (nb_f, N, N) shaped s matrix
@@ -183,10 +203,15 @@ class TWA_skrf_Toolkit:
         """
         fullnet: network object for a full antenna
         f: the frequency you want the S parameters for
+        returns: if self.center_fed_mode == True, then it will return S11, S21, S31. Else, it will return S11 and S21.
         """
         freqs = fullnet.frequency.f_scaled
         i_f = np.where(freqs == f)[0][0]
-        return fullnet.s[i_f][0,0], fullnet.s[i_f][0,1]
+
+        if self.center_fed_mode == True:
+            return fullnet.s[i_f][0,0], fullnet.s[i_f][0,1], fullnet.s[i_f][0,2]
+        else:
+            return fullnet.s[i_f][0,0], fullnet.s[i_f][0,1]
 
     def get_fullant_given_one_length(self, length):
         """
@@ -197,36 +222,66 @@ class TWA_skrf_Toolkit:
         # antenna network 
         antnet1 = self.build_antnet_chopped(self.freqs_for_fullant, self.antfile, name='chopped ant network')
 
-        # capacitor network 
-        cap_list = []
-        for i_port in range(self.num_straps):
-            capname = '_cap_' + str(i_port+1) + f'_port_{i_port + 2}'
-            cap_list.append(self.build_capnet_given_length(length=length, freqs=freqs, filename=self.capfile, round_level=3))
-            cap_list[i_port].name = 'l_' + cap_list[i_port].name + capname
 
         portf = rf.Frequency.from_f(freqs, unit='MHz')
+        cap_list = []
 
-        port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
-        port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+        if self.center_fed_mode == True:
+            # capacitor network 
+            for i_port in range(self.num_straps):
+                capname = '_cap_' + str(i_port+2) + f'_port_{i_port + 3}'
+                cap_list.append(self.build_capnet_given_length(length=length, freqs=freqs, filename=self.capfile, round_level=3))
+                cap_list[i_port].name = 'l_' + cap_list[i_port].name + capname
+
+            port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+            port_out1 = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output1')
+            port_out2 = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output2')
 
 
-        # wire them together 
-        connections = [
-            [(antnet1, 0), (port_in, 0)],
-            [(antnet1, 1), (port_out, 0)]]
-        
-        for i in range(self.num_straps):
-            connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+            # wire them together 
+            connections = [
+                [(antnet1, 0), (port_in, 0)],
+                [(antnet1, 1), (port_out1, 0)],
+                [(antnet1, 2), (port_out2, 0)]]
+            
+            for i in range(self.num_straps):
+                connections = connections + [[(antnet1, i+3), (cap_list[i], 0)]]
 
-        circuit_model = rf.Circuit(connections)
-        full_network = circuit_model.network
+            circuit_model = rf.Circuit(connections)
+            full_network = circuit_model.network
+
+        else: 
+            # capacitor network 
+            for i_port in range(self.num_straps):
+                capname = '_cap_' + str(i_port+1) + f'_port_{i_port + 2}'
+                cap_list.append(self.build_capnet_given_length(length=length, freqs=freqs, filename=self.capfile, round_level=3))
+                cap_list[i_port].name = 'l_' + cap_list[i_port].name + capname
+
+            port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+            port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+
+
+            # wire them together 
+            connections = [
+                [(antnet1, 0), (port_in, 0)],
+                [(antnet1, 1), (port_out, 0)]]
+            
+            for i in range(self.num_straps):
+                connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+
+            circuit_model = rf.Circuit(connections)
+            full_network = circuit_model.network
+
         return full_network
     
     def get_fullant_S11_S12_given_one_length(self, length, f):
+        """
+        Will return S11, S21, S31 if self.center_fed_mode == True 
+        """
         fullnet = self.get_fullant_given_one_length(length)
         return self.get_full_TWA_network_S11_S21(fullnet, f)
     
-    def get_fullant_given_C_via_caps(self, C):
+    def get_fullant_given_C_via_caps(self, C): 
         """
         C: capacitance [F] of strap caps 
         """
@@ -242,26 +297,51 @@ class TWA_skrf_Toolkit:
         Z = np.zeros((rf_freq_object.f.shape[0],1,1), dtype='complex') # this impedence needs to be shape number of frequencies, 1, 1 
         Z[:,0,0] = capZ
         cap_list = []
-        for i_port in range(self.num_straps):
-            capname = 'C_' + str(i_port+1) + f'_port_{i_port + 2}'
-            cap_list.append(rf.Network(frequency=rf_freq_object, z=Z, z0=self.capz0, name=capname))
 
-        portf = rf.Frequency.from_f(freqs, unit='MHz')
+        if self.center_fed_mode == True:
+            for i_port in range(self.num_straps):
+                capname = 'C_' + str(i_port+2) + f'_port_{i_port + 3}'
+                cap_list.append(rf.Network(frequency=rf_freq_object, z=Z, z0=self.capz0, name=capname))
 
-        port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
-        port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+            portf = rf.Frequency.from_f(freqs, unit='MHz')
 
+            port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+            port_out1 = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output1')
+            port_out2 = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output2')
 
-        # wire them together 
-        connections = [
-            [(antnet1, 0), (port_in, 0)],
-            [(antnet1, 1), (port_out, 0)]]
-        
-        for i in range(self.num_straps):
-            connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+            # wire them together 
+            connections = [
+                [(antnet1, 0), (port_in, 0)],
+                [(antnet1, 1), (port_out1, 0)],
+                [(antnet1, 2), (port_out2, 0)]]
+            
+            for i in range(self.num_straps):
+                connections = connections + [[(antnet1, i+3), (cap_list[i], 0)]]
 
-        circuit_model = rf.Circuit(connections)
-        full_network = circuit_model.network
+            circuit_model = rf.Circuit(connections)
+            full_network = circuit_model.network
+
+        else:
+            for i_port in range(self.num_straps):
+                capname = 'C_' + str(i_port+1) + f'_port_{i_port + 2}'
+                cap_list.append(rf.Network(frequency=rf_freq_object, z=Z, z0=self.capz0, name=capname))
+
+            portf = rf.Frequency.from_f(freqs, unit='MHz')
+
+            port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+            port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+
+            # wire them together 
+            connections = [
+                [(antnet1, 0), (port_in, 0)],
+                [(antnet1, 1), (port_out, 0)]]
+            
+            for i in range(self.num_straps):
+                connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+
+            circuit_model = rf.Circuit(connections)
+            full_network = circuit_model.network
+
         return full_network
     
     def get_fullant_S11_S12_given_C(self, C, f):
@@ -277,42 +357,85 @@ class TWA_skrf_Toolkit:
         ls: a numpy array of capacitor lengths [m]
         f: the frequency you want to look at 
         """
-        S11v = np.array([])
-        S21v = np.array([])
 
-        for i in range(ls.shape[0]):
-            l = ls[i]
-            S11, S21 = self.get_fullant_S11_S12_given_one_length(l, f)
-            S11abs = np.abs(S11)
-            S21abs = np.abs(S21)
-            S11v = np.append(S11v, S11abs)
-            S21v = np.append(S21v, S21abs)
+        if self.center_fed_mode:
+            S11v = np.array([])
+            S21v = np.array([])
+            S31v = np.array([])
 
-        fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+            for i in range(ls.shape[0]):
+                l = ls[i]
+                S11, S21, S31 = self.get_fullant_S11_S12_given_one_length(l, f)
+                S11abs = np.abs(S11)
+                S21abs = np.abs(S21)
+                S31abs = np.abs(S31)
+                S11v = np.append(S11v, S11abs)
+                S21v = np.append(S21v, S21abs)
+                S31v = np.append(S31v, S31abs)
 
-        axs[0].plot(ls*100, S11v, label='|S11|')
-        axs[0].set_ylabel('|S|')
-        axs[0].set_xlabel('Cap length [cm]')
-        axs[0].grid()
-        axs[0].legend()
+            fig, axs = plt.subplots(1, 3, figsize=(12, 5))
 
-        axs[1].plot(ls*100, S21v, label='|S21|', color='red')
-        axs[1].set_ylabel('|S|')
-        axs[1].set_xlabel('Cap length [cm]')
-        axs[1].grid()
-        axs[1].legend()
-        axs[1].set_title(f'Frequency: {f} MHz')
+            axs[0].plot(ls*100, S11v, label='|S11|')
+            axs[0].set_ylabel('|S|')
+            axs[0].set_xlabel('Cap length [cm]')
+            axs[0].grid()
+            axs[0].legend()
 
-        axs[2].plot(ls*100, S11v, label='|S11|')
-        axs[2].plot(ls*100, S21v, label='|S12|', color='red')
-        axs[2].set_ylabel('|S|')
-        axs[2].set_xlabel('Cap length [cm]')
-        axs[2].grid()
-        axs[2].legend()     
-        #plt.show()
+            axs[1].plot(ls*100, S21v, label='|S21|', color='red')
+            axs[1].plot(ls*100, S31v, label='|S31|', color='orange')
+            axs[1].set_ylabel('|S|')
+            axs[1].set_xlabel('Cap length [cm]')
+            axs[1].grid()
+            axs[1].legend()
+            axs[1].set_title(f'Frequency: {f} MHz')
 
-        if return_data:
-            return S11v, S21v, axs
+            axs[2].plot(ls*100, S11v, label='|S11|')
+            axs[2].plot(ls*100, S21v, label='|S12|', color='red')
+            axs[2].set_ylabel('|S|')
+            axs[2].set_xlabel('Cap length [cm]')
+            axs[2].grid()
+            axs[2].legend()     
+            #plt.show()
+
+            if return_data:
+                return S11v, S21v, S31v, axs
+        else:
+            S11v = np.array([])
+            S21v = np.array([])
+
+            for i in range(ls.shape[0]):
+                l = ls[i]
+                S11, S21 = self.get_fullant_S11_S12_given_one_length(l, f)
+                S11abs = np.abs(S11)
+                S21abs = np.abs(S21)
+                S11v = np.append(S11v, S11abs)
+                S21v = np.append(S21v, S21abs)
+
+            fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+
+            axs[0].plot(ls*100, S11v, label='|S11|')
+            axs[0].set_ylabel('|S|')
+            axs[0].set_xlabel('Cap length [cm]')
+            axs[0].grid()
+            axs[0].legend()
+
+            axs[1].plot(ls*100, S21v, label='|S21|', color='red')
+            axs[1].set_ylabel('|S|')
+            axs[1].set_xlabel('Cap length [cm]')
+            axs[1].grid()
+            axs[1].legend()
+            axs[1].set_title(f'Frequency: {f} MHz')
+
+            axs[2].plot(ls*100, S11v, label='|S11|')
+            axs[2].plot(ls*100, S21v, label='|S12|', color='red')
+            axs[2].set_ylabel('|S|')
+            axs[2].set_xlabel('Cap length [cm]')
+            axs[2].grid()
+            axs[2].legend()     
+            #plt.show()
+
+            if return_data:
+                return S11v, S21v, axs
         
     # copies of functions that are faster due to not reading the file every time 
     def get_cap_S_given_f_and_lcap_from_internal_datatable(self, f, lcap, round_level=3):
@@ -333,7 +456,6 @@ class TWA_skrf_Toolkit:
         S11db = np.real(data[rownum, 4])
         Z0_port = np.real(data[rownum, 7])
         VSWR = np.real(data[rownum, 8])
-        #print('TODO: should test with a slightly larger dataset')
         return ffound, lcapfound, S11, S11db, Z0_port, VSWR
 
     def build_capnet_given_length_from_internal_datatable(self, length, freqs, round_level=3):
@@ -360,23 +482,43 @@ class TWA_skrf_Toolkit:
     def get_ant_Smat_given_f_from_internal_datatable(self, f):
         data = self.ant_table
         num_ports = data[0,:].shape[0] - 1
-        self.num_ports_chopped_ant = num_ports - 2 # the number of "chopped" cap ports, one per strap 
-        if self.num_ports_chopped_ant != self.num_straps:
-            raise ValueError(f'The number of straps {self.num_straps} does not match nnumber of chopped ports {self.num_ports_chopped_ant}')
-        
-        freqs = np.real(data[:, 0])
-        ufreqs = np.unique(freqs)
-        num_freqs = ufreqs.shape[0]
-        i_f = np.where(ufreqs == f)[0][0]
-        start_idx = i_f*(self.num_straps + 2)
-        Smat = data[start_idx:(start_idx+self.num_straps + 2), 1:]
+
+        if self.center_fed_mode == True:
+            self.num_ports_chopped_ant = num_ports - 3 # the number of "chopped" cap ports, one per strap 
+            if self.num_ports_chopped_ant != self.num_straps:
+                raise ValueError(f'The number of straps {self.num_straps} does not match nnumber of chopped ports {self.num_ports_chopped_ant}')
+            
+            freqs = np.real(data[:, 0])
+            ufreqs = np.unique(freqs)
+            num_freqs = ufreqs.shape[0]
+            i_f = np.where(ufreqs == f)[0][0]
+            start_idx = i_f*(self.num_straps + 3)
+            Smat = data[start_idx:(start_idx+self.num_straps + 3), 1:]
+
+        else:
+            self.num_ports_chopped_ant = num_ports - 2 # the number of "chopped" cap ports, one per strap 
+            if self.num_ports_chopped_ant != self.num_straps:
+                raise ValueError(f'The number of straps {self.num_straps} does not match nnumber of chopped ports {self.num_ports_chopped_ant}')
+            
+            freqs = np.real(data[:, 0])
+            ufreqs = np.unique(freqs)
+            num_freqs = ufreqs.shape[0]
+            i_f = np.where(ufreqs == f)[0][0]
+            start_idx = i_f*(self.num_straps + 2)
+            Smat = data[start_idx:(start_idx+self.num_straps + 2), 1:]
+
         return Smat # this is the smat for a given frequency 
 
     def build_antnet_chopped_from_internal_datatable(self, freqs, name=None):
         """
         freqs: a numpy array of frquencies in MHz
         """
-        z0s = [self.antz0, self.antz0] + [self.capz0]*self.num_straps # create a list of the antenna port z0s. The two coax ports are first
+        if self.center_fed_mode == True:
+            z0s = [self.antz0, self.antz0, self.antz0] + [self.capz0]*self.num_straps # create a list of the antenna port z0s. The two coax ports are first
+        
+        else:
+            z0s = [self.antz0, self.antz0] + [self.capz0]*self.num_straps
+
         smat_test =  self.get_ant_Smat_given_f_from_internal_datatable(freqs[0])
         numports = smat_test.shape[0]
         smat_versus_freq = np.zeros((freqs.shape[0], numports, numports), dtype='complex') # the (nb_f, N, N) shaped s matrix
@@ -403,30 +545,61 @@ class TWA_skrf_Toolkit:
 
         # capacitor network 
         cap_list = []
-        for i_port in range(self.num_straps):
-            capname = '_cap_' + str(i_port+1) + f'_port_{i_port + 2}'
-            cap_list.append(self.build_capnet_given_length_from_internal_datatable(length=length, freqs=freqs, round_level=3))
-            cap_list[i_port].name = 'l_' + cap_list[i_port].name + capname
 
-        portf = rf.Frequency.from_f(freqs, unit='MHz')
+        if self.center_fed_mode == True:
+            for i_port in range(self.num_straps):
+                capname = '_cap_' + str(i_port+2) + f'_port_{i_port + 3}'
+                cap_list.append(self.build_capnet_given_length_from_internal_datatable(length=length, freqs=freqs, round_level=3))
+                cap_list[i_port].name = 'l_' + cap_list[i_port].name + capname
 
-        port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
-        port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+            portf = rf.Frequency.from_f(freqs, unit='MHz')
+
+            port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+            port_out1 = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output1')
+            port_out2 = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output2')
 
 
-        # wire them together 
-        connections = [
-            [(antnet1, 0), (port_in, 0)],
-            [(antnet1, 1), (port_out, 0)]]
-        
-        for i in range(self.num_straps):
-            connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+            # wire them together 
+            connections = [
+                [(antnet1, 0), (port_in, 0)],
+                [(antnet1, 1), (port_out1, 0)],
+                [(antnet1, 2), (port_out2, 0)]]
+            
+            for i in range(self.num_straps):
+                connections = connections + [[(antnet1, i+3), (cap_list[i], 0)]]
 
-        circuit_model = rf.Circuit(connections)
-        full_network = circuit_model.network
+            circuit_model = rf.Circuit(connections)
+            full_network = circuit_model.network
+
+        else:
+            for i_port in range(self.num_straps):
+                capname = '_cap_' + str(i_port+1) + f'_port_{i_port + 2}'
+                cap_list.append(self.build_capnet_given_length_from_internal_datatable(length=length, freqs=freqs, round_level=3))
+                cap_list[i_port].name = 'l_' + cap_list[i_port].name + capname
+
+            portf = rf.Frequency.from_f(freqs, unit='MHz')
+
+            port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+            port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+
+
+            # wire them together 
+            connections = [
+                [(antnet1, 0), (port_in, 0)],
+                [(antnet1, 1), (port_out, 0)]]
+            
+            for i in range(self.num_straps):
+                connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+
+            circuit_model = rf.Circuit(connections)
+            full_network = circuit_model.network
+
         return full_network
 
     def get_fullant_S11_S12_given_one_length_from_internal_datatable(self, length, f):
+        """
+        Will return S11, S21, S31 if self.center_fed_mode == True 
+        """
         fullnet = self.get_fullant_given_one_length_from_internal_datatable(length)
         return self.get_full_TWA_network_S11_S21(fullnet, f)
     
@@ -446,26 +619,53 @@ class TWA_skrf_Toolkit:
         Z = np.zeros((rf_freq_object.f.shape[0],1,1), dtype='complex') # this impedence needs to be shape number of frequencies, 1, 1 
         Z[:,0,0] = capZ
         cap_list = []
-        for i_port in range(self.num_straps):
-            capname = 'C_' + str(i_port+1) + f'_port_{i_port + 2}'
-            cap_list.append(rf.Network(frequency=rf_freq_object, z=Z, z0=self.capz0, name=capname))
-
-        portf = rf.Frequency.from_f(freqs, unit='MHz')
-
-        port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
-        port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
 
 
-        # wire them together 
-        connections = [
-            [(antnet1, 0), (port_in, 0)],
-            [(antnet1, 1), (port_out, 0)]]
-        
-        for i in range(self.num_straps):
-            connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+        if self.center_fed_mode == True:
+            for i_port in range(self.num_straps):
+                capname = 'C_' + str(i_port+2) + f'_port_{i_port + 3}'
+                cap_list.append(rf.Network(frequency=rf_freq_object, z=Z, z0=self.capz0, name=capname))
 
-        circuit_model = rf.Circuit(connections)
-        full_network = circuit_model.network
+            portf = rf.Frequency.from_f(freqs, unit='MHz')
+
+            port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+            port_out1 = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output1')
+            port_out2 = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output2')
+
+
+            # wire them together 
+            connections = [
+                [(antnet1, 0), (port_in, 0)],
+                [(antnet1, 1), (port_out1, 0)],
+                [(antnet1, 2), (port_out2, 0)]]
+            
+            for i in range(self.num_straps):
+                connections = connections + [[(antnet1, i+3), (cap_list[i], 0)]]
+
+            circuit_model = rf.Circuit(connections)
+            full_network = circuit_model.network
+        else:
+            for i_port in range(self.num_straps):
+                capname = 'C_' + str(i_port+1) + f'_port_{i_port + 2}'
+                cap_list.append(rf.Network(frequency=rf_freq_object, z=Z, z0=self.capz0, name=capname))
+
+            portf = rf.Frequency.from_f(freqs, unit='MHz')
+
+            port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+            port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+
+
+            # wire them together 
+            connections = [
+                [(antnet1, 0), (port_in, 0)],
+                [(antnet1, 1), (port_out, 0)]]
+            
+            for i in range(self.num_straps):
+                connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+
+            circuit_model = rf.Circuit(connections)
+            full_network = circuit_model.network
+
         return full_network
 
     def get_fullant_S11_S12_given_C_from_internal_datatable(self, C, f):
@@ -481,84 +681,168 @@ class TWA_skrf_Toolkit:
         ls: a numpy array of capacitor lengths [m]
         f: the frequency you want to look at 
         """
-        S11v = np.array([])
-        S21v = np.array([])
+        if self.center_fed_mode == True: 
+            S11v = np.array([])
+            S21v = np.array([])
+            S31v = np.array([])
 
-        for i in range(ls.shape[0]):
-            l = ls[i]
-            S11, S21 = self.get_fullant_S11_S12_given_one_length_from_internal_datatable(l, f)
-            S11abs = np.abs(S11)
-            S21abs = np.abs(S21)
-            S11v = np.append(S11v, S11abs)
-            S21v = np.append(S21v, S21abs)
+            for i in range(ls.shape[0]):
+                l = ls[i]
+                S11, S21, S31 = self.get_fullant_S11_S12_given_one_length_from_internal_datatable(l, f)
+                S11abs = np.abs(S11)
+                S21abs = np.abs(S21)
+                S31abs = np.abs(S31)
+                S11v = np.append(S11v, S11abs)
+                S21v = np.append(S21v, S21abs)
+                S31v = np.append(S31v, S31abs)
 
-        fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+            fig, axs = plt.subplots(1, 3, figsize=(12, 5))
 
-        axs[0].plot(ls*100, S11v, label='|S11|')
-        axs[0].set_ylabel('|S|')
-        axs[0].set_xlabel('Cap length [cm]')
-        axs[0].grid()
-        axs[0].legend()
+            axs[0].plot(ls*100, S11v, label='|S11|')
+            axs[0].set_ylabel('|S|')
+            axs[0].set_xlabel('Cap length [cm]')
+            axs[0].grid()
+            axs[0].legend()
 
-        axs[1].plot(ls*100, S21v, label='|S21|', color='red')
-        axs[1].set_ylabel('|S|')
-        axs[1].set_xlabel('Cap length [cm]')
-        axs[1].grid()
-        axs[1].legend()
-        axs[1].set_title(f'Frequency: {f} MHz')
+            axs[1].plot(ls*100, S21v, label='|S21|', color='red')
+            axs[1].plot(ls*100, S31v, label='|S31|', color='orange')
+            axs[1].set_ylabel('|S|')
+            axs[1].set_xlabel('Cap length [cm]')
+            axs[1].grid()
+            axs[1].legend()
+            axs[1].set_title(f'Frequency: {f} MHz')
 
-        axs[2].plot(ls*100, S11v, label='|S11|')
-        axs[2].plot(ls*100, S21v, label='|S12|', color='red')
-        axs[2].set_ylabel('|S|')
-        axs[2].set_xlabel('Cap length [cm]')
-        axs[2].grid()
-        axs[2].legend()     
-        #plt.show()
+            axs[2].plot(ls*100, S11v, label='|S11|')
+            axs[2].plot(ls*100, S21v, label='|S12|', color='red')
+            axs[2].set_ylabel('|S|')
+            axs[2].set_xlabel('Cap length [cm]')
+            axs[2].grid()
+            axs[2].legend()     
+            #plt.show()
 
-        if return_data:
-            return S11v, S21v, axs
+            if return_data:
+                return S11v, S21v, S31v, axs
+        else:
+            S11v = np.array([])
+            S21v = np.array([])
+
+            for i in range(ls.shape[0]):
+                l = ls[i]
+                S11, S21 = self.get_fullant_S11_S12_given_one_length_from_internal_datatable(l, f)
+                S11abs = np.abs(S11)
+                S21abs = np.abs(S21)
+                S11v = np.append(S11v, S11abs)
+                S21v = np.append(S21v, S21abs)
+
+            fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+
+            axs[0].plot(ls*100, S11v, label='|S11|')
+            axs[0].set_ylabel('|S|')
+            axs[0].set_xlabel('Cap length [cm]')
+            axs[0].grid()
+            axs[0].legend()
+
+            axs[1].plot(ls*100, S21v, label='|S21|', color='red')
+            axs[1].set_ylabel('|S|')
+            axs[1].set_xlabel('Cap length [cm]')
+            axs[1].grid()
+            axs[1].legend()
+            axs[1].set_title(f'Frequency: {f} MHz')
+
+            axs[2].plot(ls*100, S11v, label='|S11|')
+            axs[2].plot(ls*100, S21v, label='|S12|', color='red')
+            axs[2].set_ylabel('|S|')
+            axs[2].set_xlabel('Cap length [cm]')
+            axs[2].grid()
+            axs[2].legend()     
+            #plt.show()
+
+            if return_data:
+                return S11v, S21v, axs
         
     def plot_abs_S11_S21_f_scan_from_internal_datatable(self, fs, l, return_data=False):
         """
         ls: a numpy array of capacitor lengths [m]
         f: the frequency you want to look at 
         """
-        S11v = np.array([])
-        S21v = np.array([])
+        if self.center_fed_mode == True:
+            S11v = np.array([])
+            S21v = np.array([])
+            S31v = np.array([])
 
-        for i in range(fs.shape[0]):
-            f = fs[i]
-            S11, S21 = self.get_fullant_S11_S12_given_one_length_from_internal_datatable(l, f)
-            S11abs = np.abs(S11)
-            S21abs = np.abs(S21)
-            S11v = np.append(S11v, S11abs)
-            S21v = np.append(S21v, S21abs)
+            for i in range(fs.shape[0]):
+                f = fs[i]
+                S11, S21, S31 = self.get_fullant_S11_S12_given_one_length_from_internal_datatable(l, f)
+                S11abs = np.abs(S11)
+                S21abs = np.abs(S21)
+                S31abs = np.abs(S31)
+                S11v = np.append(S11v, S11abs)
+                S21v = np.append(S21v, S21abs)
+                S31v = np.append(S31v, S31abs)
 
-        fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+            fig, axs = plt.subplots(1, 3, figsize=(12, 5))
 
-        axs[0].plot(fs, S11v, label='|S11|')
-        axs[0].set_ylabel('|S|')
-        axs[0].set_xlabel('f [MHz]')
-        axs[0].grid()
-        axs[0].legend()
+            axs[0].plot(fs, S11v, label='|S11|')
+            axs[0].set_ylabel('|S|')
+            axs[0].set_xlabel('f [MHz]')
+            axs[0].grid()
+            axs[0].legend()
 
-        axs[1].plot(fs, S21v, label='|S21|', color='red')
-        axs[1].set_ylabel('|S|')
-        axs[1].set_xlabel('f [MHz]')
-        axs[1].grid()
-        axs[1].legend()
-        axs[1].set_title(f'Cap Length: {l*100} cm')
+            axs[1].plot(fs, S21v, label='|S21|', color='red')
+            axs[1].plot(fs, S31v, label='|S31|', color='orange')
+            axs[1].set_ylabel('|S|')
+            axs[1].set_xlabel('f [MHz]')
+            axs[1].grid()
+            axs[1].legend()
+            axs[1].set_title(f'Cap Length: {l*100} cm')
 
-        axs[2].plot(fs, S11v, label='|S11|')
-        axs[2].plot(fs, S21v, label='|S12|', color='red')
-        axs[2].set_ylabel('|S|')
-        axs[2].set_xlabel('f [MHz]')
-        axs[2].grid()
-        axs[2].legend()     
-        #plt.show()
+            axs[2].plot(fs, S11v, label='|S11|')
+            axs[2].plot(fs, S21v, label='|S12|', color='red')
+            axs[2].set_ylabel('|S|')
+            axs[2].set_xlabel('f [MHz]')
+            axs[2].grid()
+            axs[2].legend()     
+            #plt.show()
 
-        if return_data:
-            return S11v, S21v, axs
+            if return_data:
+                return S11v, S21v, S31v, axs
+        else:
+            S11v = np.array([])
+            S21v = np.array([])
+
+            for i in range(fs.shape[0]):
+                f = fs[i]
+                S11, S21 = self.get_fullant_S11_S12_given_one_length_from_internal_datatable(l, f)
+                S11abs = np.abs(S11)
+                S21abs = np.abs(S21)
+                S11v = np.append(S11v, S11abs)
+                S21v = np.append(S21v, S21abs)
+
+            fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+
+            axs[0].plot(fs, S11v, label='|S11|')
+            axs[0].set_ylabel('|S|')
+            axs[0].set_xlabel('f [MHz]')
+            axs[0].grid()
+            axs[0].legend()
+
+            axs[1].plot(fs, S21v, label='|S21|', color='red')
+            axs[1].set_ylabel('|S|')
+            axs[1].set_xlabel('f [MHz]')
+            axs[1].grid()
+            axs[1].legend()
+            axs[1].set_title(f'Cap Length: {l*100} cm')
+
+            axs[2].plot(fs, S11v, label='|S11|')
+            axs[2].plot(fs, S21v, label='|S12|', color='red')
+            axs[2].set_ylabel('|S|')
+            axs[2].set_xlabel('f [MHz]')
+            axs[2].grid()
+            axs[2].legend()     
+            #plt.show()
+
+            if return_data:
+                return S11v, S21v, axs
     
     def set_interpolators_cap_data(self):
         capdata = self.captable
@@ -580,7 +864,11 @@ class TWA_skrf_Toolkit:
         return S11[0]
     
     def set_ant_Smat_interpolator(self):
-        num_ports = self.num_straps + 2
+        if self.center_fed_mode:
+            num_ports = self.num_straps + 3
+        else:
+            num_ports = self.num_straps + 2
+
         fs = self.freqs_for_fullant
         s = self.build_antnet_chopped_from_internal_datatable(fs, name=None).s
         interp_matrix_real = []
@@ -605,11 +893,19 @@ class TWA_skrf_Toolkit:
         interp_matrix_real = self.interp_matrix_real
         interp_matrix_imag = self.interp_matrix_imag
 
-        Smat = np.zeros((self.num_straps+2, self.num_straps+2), dtype='complex') # initialize the s matrix 
+        if self.center_fed_mode == True:
+            Smat = np.zeros((self.num_straps+3, self.num_straps+3), dtype='complex') # initialize the s matrix 
 
-        for i in range(self.num_straps+2):
-            for j in range(self.num_straps+2):
-                Smat[i,j] = interp_matrix_real[i][j](f) + 1j*interp_matrix_imag[i][j](f)
+            for i in range(self.num_straps+3):
+                for j in range(self.num_straps+3):
+                    Smat[i,j] = interp_matrix_real[i][j](f) + 1j*interp_matrix_imag[i][j](f)
+
+        else:
+            Smat = np.zeros((self.num_straps+2, self.num_straps+2), dtype='complex') # initialize the s matrix 
+
+            for i in range(self.num_straps+2):
+                for j in range(self.num_straps+2):
+                    Smat[i,j] = interp_matrix_real[i][j](f) + 1j*interp_matrix_imag[i][j](f)
         
         return Smat
 
@@ -683,28 +979,55 @@ class TWA_skrf_Toolkit:
             if self.num_straps != len(lengths):
                 raise ValueError('The lengths array is not the correct length for this mode')
 
-        cap_list = []
-        for i_port in range(self.num_straps):
-            capname = '_cap_' + str(i_port+1) + f'_port_{i_port + 2}'
-            cap_list.append(self.build_capnet_given_length_interpolated(length=lengths[i_port], freqs=freqs))
-            cap_list[i_port].name = 'l_' + cap_list[i_port].name + capname
+        if self.center_fed_mode == True:
+            cap_list = []
+            for i_port in range(self.num_straps):
+                capname = '_cap_' + str(i_port+2) + f'_port_{i_port + 3}'
+                cap_list.append(self.build_capnet_given_length_interpolated(length=lengths[i_port], freqs=freqs))
+                cap_list[i_port].name = 'l_' + cap_list[i_port].name + capname
 
-        portf = rf.Frequency.from_f(freqs, unit='MHz')
+            portf = rf.Frequency.from_f(freqs, unit='MHz')
 
-        port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
-        port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+            port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+            port_out1 = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output1')
+            port_out2 = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output2')
 
 
-        # wire them together 
-        connections = [
-            [(antnet1, 0), (port_in, 0)],
-            [(antnet1, 1), (port_out, 0)]]
-        
-        for i in range(self.num_straps):
-            connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+            # wire them together 
+            connections = [
+                [(antnet1, 0), (port_in, 0)],
+                [(antnet1, 1), (port_out1, 0)],
+                [(antnet1, 2), (port_out2, 0)]]
+            
+            for i in range(self.num_straps):
+                connections = connections + [[(antnet1, i+3), (cap_list[i], 0)]]
 
-        circuit_model = rf.Circuit(connections)
-        full_network = circuit_model.network
+            circuit_model = rf.Circuit(connections)
+            full_network = circuit_model.network
+
+        else:
+            cap_list = []
+            for i_port in range(self.num_straps):
+                capname = '_cap_' + str(i_port+1) + f'_port_{i_port + 2}'
+                cap_list.append(self.build_capnet_given_length_interpolated(length=lengths[i_port], freqs=freqs))
+                cap_list[i_port].name = 'l_' + cap_list[i_port].name + capname
+
+            portf = rf.Frequency.from_f(freqs, unit='MHz')
+
+            port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+            port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+
+
+            # wire them together 
+            connections = [
+                [(antnet1, 0), (port_in, 0)],
+                [(antnet1, 1), (port_out, 0)]]
+            
+            for i in range(self.num_straps):
+                connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+
+            circuit_model = rf.Circuit(connections)
+            full_network = circuit_model.network
 
 
         # if the user requests the full circuit, return the circuit
@@ -770,26 +1093,53 @@ class TWA_skrf_Toolkit:
             capZs.append(Z)
 
         cap_list = []
-        for i_port in range(self.num_straps):
-            capname = 'C_' + str(i_port+1) + f'_port_{i_port + 2}'
-            cap_list.append(rf.Network(frequency=rf_freq_object, z=capZs[i_port], z0=self.capz0, name=capname))
 
-        portf = rf.Frequency.from_f(freqs, unit='MHz')
+        if self.center_fed_mode == True:
+            for i_port in range(self.num_straps):
+                capname = 'C_' + str(i_port+1) + f'_port_{i_port + 3}'
+                cap_list.append(rf.Network(frequency=rf_freq_object, z=capZs[i_port], z0=self.capz0, name=capname))
 
-        port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
-        port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+            portf = rf.Frequency.from_f(freqs, unit='MHz')
+
+            port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+            port_out1 = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output1')
+            port_out2 = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output2')
 
 
-        # wire them together 
-        connections = [
-            [(antnet1, 0), (port_in, 0)],
-            [(antnet1, 1), (port_out, 0)]]
-        
-        for i in range(self.num_straps):
-            connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+            # wire them together 
+            connections = [
+                [(antnet1, 0), (port_in, 0)],
+                [(antnet1, 1), (port_out1, 0)],
+                [(antnet1, 2), (port_out2, 0)]]
+            
+            for i in range(self.num_straps):
+                connections = connections + [[(antnet1, i+3), (cap_list[i], 0)]]
 
-        circuit_model = rf.Circuit(connections)
-        full_network = circuit_model.network
+            circuit_model = rf.Circuit(connections)
+            full_network = circuit_model.network
+
+        else:
+            for i_port in range(self.num_straps):
+                capname = 'C_' + str(i_port+1) + f'_port_{i_port + 2}'
+                cap_list.append(rf.Network(frequency=rf_freq_object, z=capZs[i_port], z0=self.capz0, name=capname))
+
+            portf = rf.Frequency.from_f(freqs, unit='MHz')
+
+            port_in = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='input')
+            port_out = rf.Circuit.Port(frequency=portf, z0=self.antz0, name='output')
+
+
+            # wire them together 
+            connections = [
+                [(antnet1, 0), (port_in, 0)],
+                [(antnet1, 1), (port_out, 0)]]
+            
+            for i in range(self.num_straps):
+                connections = connections + [[(antnet1, i+2), (cap_list[i], 0)]]
+
+            circuit_model = rf.Circuit(connections)
+            full_network = circuit_model.network
+
         return full_network
     
     def op_info(self, i_iter, p):
