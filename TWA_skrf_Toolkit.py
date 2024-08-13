@@ -1096,7 +1096,7 @@ class TWA_skrf_Toolkit:
 
         if self.center_fed_mode == True:
             for i_port in range(self.num_straps):
-                capname = 'C_' + str(i_port+1) + f'_port_{i_port + 3}'
+                capname = 'C_' + str(i_port+2) + f'_port_{i_port + 3}'
                 cap_list.append(rf.Network(frequency=rf_freq_object, z=capZs[i_port], z0=self.capz0, name=capname))
 
             portf = rf.Frequency.from_f(freqs, unit='MHz')
@@ -1185,7 +1185,7 @@ class TWA_skrf_Toolkit:
         S11_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
 
         for i in range(S11_array.shape[0]):
-            S11, S21 = self.get_full_TWA_network_S11_S21(fullnet=network, f=self.freqs_for_fullant[i])
+            S11 = self.get_full_TWA_network_S11_S21(fullnet=network, f=self.freqs_for_fullant[i])[0] # TODO: changed howe first return is handled
             S11_array[i] = S11
 
 
@@ -1242,7 +1242,7 @@ class TWA_skrf_Toolkit:
         S11_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
 
         for i in range(S11_array.shape[0]):
-            S11, S21 = self.get_full_TWA_network_S11_S21(fullnet=network, f=self.freqs_for_fullant[i])
+            S11 = self.get_full_TWA_network_S11_S21(fullnet=network, f=self.freqs_for_fullant[i])[0]
             S11_array[i] = S11
 
 
@@ -1350,7 +1350,7 @@ class TWA_skrf_Toolkit:
         S11_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
 
         for i in range(S11_array.shape[0]):
-            S11, S21 = self.get_full_TWA_network_S11_S21(fullnet=network, f=self.freqs_for_fullant[i])
+            S11 = self.get_full_TWA_network_S11_S21(fullnet=network, f=self.freqs_for_fullant[i])[0]
             S11_array[i] = S11
 
 
@@ -1532,7 +1532,7 @@ class TWA_skrf_Toolkit:
         S11_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
 
         for i in range(S11_array.shape[0]):
-            S11, S21 = self.get_full_TWA_network_S11_S21(fullnet=network, f=self.freqs_for_fullant[i])
+            S11 = self.get_full_TWA_network_S11_S21(fullnet=network, f=self.freqs_for_fullant[i])[0]
             S11_array[i] = S11
 
 
