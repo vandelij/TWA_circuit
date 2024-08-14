@@ -1458,10 +1458,13 @@ class TWA_skrf_Toolkit:
                                                           end_cap_mode,
                                                           return_circ=True)
         
+        idx = np.where(full_circ.frequency.f_scaled == freq/1e6) # get the index of the frequency in question 
+        #print('BOOM: here u go, the f you want is:', full_circ.frequency.f_scaled[idx])
+        
         if self.center_fed_mode:
-            strap_current_array = full_circ.currents(power,phase)[1,:].reshape(self.num_straps + 3,2)[:,1][3:]  # remove double counting, remove three or two external ports
+            strap_current_array = full_circ.currents(power,phase)[idx,:].reshape(self.num_straps + 3,2)[:,1][3:]  # remove double counting, remove three or two external ports
         else:
-            strap_current_array = full_circ.currents(power,phase)[1,:].reshape(self.num_straps + 2,2)[:,1][2:]
+            strap_current_array = full_circ.currents(power,phase)[idx,:].reshape(self.num_straps + 2,2)[:,1][2:]
 
         strap_phases = self.get_phase(strap_current_array)
         npar_array = np.linspace(npar_bounds[0], npar_bounds[1], num_npars)
