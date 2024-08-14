@@ -1458,7 +1458,11 @@ class TWA_skrf_Toolkit:
                                                           end_cap_mode,
                                                           return_circ=True)
         
-        strap_current_array = full_circ.currents(power,phase)[1,:].reshape(self.num_straps + 2,2)[:,1][2:]  # remove double counting, remove two external ports
+        if self.center_fed_mode:
+            strap_current_array = full_circ.currents(power,phase)[1,:].reshape(self.num_straps + 3,2)[:,1][3:]  # remove double counting, remove three or two external ports
+        else:
+            strap_current_array = full_circ.currents(power,phase)[1,:].reshape(self.num_straps + 2,2)[:,1][2:]
+
         strap_phases = self.get_phase(strap_current_array)
         npar_array = np.linspace(npar_bounds[0], npar_bounds[1], num_npars)
         result_circ_model = np.array([], dtype='complex')
