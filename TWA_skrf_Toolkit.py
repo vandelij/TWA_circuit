@@ -1558,15 +1558,26 @@ class TWA_skrf_Toolkit:
                     err = err + (S11_db - self.S11_db_cutouff)**2 # squared error if the value of S11 is above the cuttoff
 
                 # New section with error created via the npar peak not being in the correct place.  
-                found_npar_peak = self.get_peak_npar_spectrum(lengths=prm,
-                                                            npar_bounds=self.npar_bounds_for_npar_op,
-                                                            freq=self.freq_for_npar_op,
-                                                            num_npars=self.num_npars_for_npar_op,
-                                                            power=[1,0],
-                                                            phase=[0,0],
-                                                            symetric_mode=self.symetric_mode,
-                                                            one_cap_type_mode=self.one_cap_type_mode,
-                                                            end_cap_mode=self.end_cap_mode)
+                if self.center_fed_mode == True:
+                    found_npar_peak = self.get_peak_npar_spectrum(lengths=prm,
+                                                                npar_bounds=self.npar_bounds_for_npar_op,
+                                                                freq=self.freq_for_npar_op,
+                                                                num_npars=self.num_npars_for_npar_op,
+                                                                power=[1,0,0],
+                                                                phase=[0,0,0],
+                                                                symetric_mode=self.symetric_mode,
+                                                                one_cap_type_mode=self.one_cap_type_mode,
+                                                                end_cap_mode=self.end_cap_mode)
+                else:
+                    found_npar_peak = self.get_peak_npar_spectrum(lengths=prm,
+                                                                npar_bounds=self.npar_bounds_for_npar_op,
+                                                                freq=self.freq_for_npar_op,
+                                                                num_npars=self.num_npars_for_npar_op,
+                                                                power=[1,0],
+                                                                phase=[0,0],
+                                                                symetric_mode=self.symetric_mode,
+                                                                one_cap_type_mode=self.one_cap_type_mode,
+                                                                end_cap_mode=self.end_cap_mode)
                 
                 # npar_error = self.alpha_npar_op*(found_npar_peak + 2.05 - self.target_npar)**2/(self.target_npar**2)  # TODO: the 2.05 here is found manually and not convinced it applies everywhere 
                 npar_error = self.alpha_npar_op*(found_npar_peak - self.target_npar)**2/(self.target_npar**2)  # TODO: the 2.05 here is found manually and not convinced it applies everywhere
