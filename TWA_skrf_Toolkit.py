@@ -1568,8 +1568,8 @@ class TWA_skrf_Toolkit:
                                                             one_cap_type_mode=self.one_cap_type_mode,
                                                             end_cap_mode=self.end_cap_mode)
                 
-                npar_error = self.alpha_npar_op*(found_npar_peak + 2.05 - self.target_npar)**2/(self.target_npar**2)  # TODO: the 2.05 here is found manually and not convinced it applies everywhere 
-
+                # npar_error = self.alpha_npar_op*(found_npar_peak + 2.05 - self.target_npar)**2/(self.target_npar**2)  # TODO: the 2.05 here is found manually and not convinced it applies everywhere 
+                npar_error = self.alpha_npar_op*(found_npar_peak - self.target_npar)**2/(self.target_npar**2)  # TODO: the 2.05 here is found manually and not convinced it applies everywhere
                 err += npar_error            
 
 
