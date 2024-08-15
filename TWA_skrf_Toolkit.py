@@ -1478,9 +1478,18 @@ class TWA_skrf_Toolkit:
             result_circ_model = np.append(result_circ_model, power)
 
         npar_max = npar_array[np.where(result_circ_model == np.max(result_circ_model))[0][0]]
-        
 
-        return npar_max 
+        power_max = self.analytic_power_spectrum_general_phase_diff(npar_max, w_strap=self.geometry_dict['wstrap'],
+                                                                        d_strap=self.geometry_dict['d'],
+                                                                        freq=freq,
+                                                                        phase_array=strap_phases)
+        
+        power_zero = self.analytic_power_spectrum_general_phase_diff(0, w_strap=self.geometry_dict['wstrap'],
+                                                                        d_strap=self.geometry_dict['d'],
+                                                                        freq=freq,
+                                                                        phase_array=strap_phases)        
+
+        return npar_max, np.real(power_max), np.real(power_zero) 
     
     # now, define a new cost function that allows the user to control how strong the effect of the npar, max is.
 
@@ -1498,8 +1507,7 @@ class TWA_skrf_Toolkit:
                                             one_cap_type_mode=False,
                                             end_cap_mode=False):
         """
-        This version of the optimization also aims to try and also match the desired npar performance. however, this is still 
-        not rigourously implimented as the npar spectrum between the peaks seems shifted by roughly 2. 
+        This version of the optimization also aims to try and also match the desired npar performance. 
         """
         self.i_iter = 0
         self.prms = []
@@ -1567,9 +1575,117 @@ class TWA_skrf_Toolkit:
                                                                 phase=[0,0,0],
                                                                 symetric_mode=self.symetric_mode,
                                                                 one_cap_type_mode=self.one_cap_type_mode,
-                                                                end_cap_mode=self.end_cap_mode)
+                                                                end_cap_mode=self.end_cap_mode)[0]
                 else:
                     found_npar_peak = self.get_peak_npar_spectrum(lengths=prm,
+                                                                npar_bounds=self.npar_bounds_for_npar_op,
+                                                                freq=self.freq_for_npar_op,
+                                                                num_npars=self.num_npars_for_npar_op,
+                                                                power=[1,0],
+                                                                phase=[0,0],
+                                                                symetric_mode=self.symetric_mode,
+                                                                one_cap_type_mode=self.one_cap_type_mode,
+                                                                end_cap_mode=self.end_cap_mode)[0]
+                
+                # npar_error = self.alpha_npar_op*(found_npar_peak + 2.05 - self.target_npar)**2/(self.target_npar**2)  # TODO: the 2.05 here is found manually and not convinced it applies everywhere 
+                npar_error = self.alpha_npar_op*(found_npar_peak - self.target_npar)**2/(self.target_npar**2)  # TODO: the 2.05 here is found manually and not convinced it applies everywhere
+                err += npar_error            
+
+
+        
+        print(f"Average absolute error is : {err:.2e}")
+        self.errors.append(err)
+        return err 
+ 
+    
+    def run_differential_evolution_global_op_npar_match_low_npar_zero(self, 
+                                            length_bounds,
+                                            S11_db_cutouff,
+                                            freq, # in Hz
+                                            freq_bounds,
+                                            alpha_npar_op,
+                                            gamma_npar_op,
+                                            target_npar,
+                                            npar_bounds, # for finding the maximum for the optimization 
+                                            num_npars,
+                                            strategy='best1bin',
+                                            symetric_mode=False,
+                                            one_cap_type_mode=False,
+                                            end_cap_mode=False):
+        """
+        This version of the optimization also aims to try and also match the desired npar performance. both the
+        peak location (weighted by alpha) and the peak at zero (weighted by gamma) are added to the cost 
+        """
+        self.i_iter = 0
+        self.prms = []
+        self.errors = []
+        self.symetric_mode = symetric_mode
+        self.one_cap_type_mode = one_cap_type_mode
+        self.end_cap_mode = end_cap_mode
+        self.freq_bounds_for_optimization = freq_bounds
+        self.S11_db_cutouff = S11_db_cutouff
+        self.alpha_npar_op = alpha_npar_op
+        self.gamma_npar_op = gamma_npar_op
+        self.target_npar = target_npar # this sets the target npar 
+        self.npar_bounds_for_npar_op = npar_bounds
+        self.num_npars_for_npar_op = num_npars
+        self.freq_for_npar_op = freq
+        res = differential_evolution(self.error_function_npar_match_low_npar_zero, bounds=length_bounds, strategy=strategy)
+        
+        return res
+     
+    def error_function_npar_match_low_npar_zero(self, prm):
+
+        """
+        This error function uses a new parameter, self.beta_length_op, to add error when the cap lengths are not
+        close to eachother, which is beta*sum((length - average length)^2) divided by the square of the average length. 
+        """
+
+        self.prms.append(prm)
+        self.i_iter += 1
+        self.op_info(self.i_iter, prm)
+        # Filter the results if a negative value is found
+        if any([e < 0 for e in prm]):
+            return 1e30
+        
+        network = self.get_fullant_given_lengths_from_internal_datatable(lengths=prm, symetric_mode=self.symetric_mode, 
+                                                                         one_cap_type_mode=self.one_cap_type_mode,
+                                                                         end_cap_mode=self.end_cap_mode) 
+
+        S11_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
+
+        for i in range(S11_array.shape[0]):
+            S11 = self.get_full_TWA_network_S11_S21(fullnet=network, f=self.freqs_for_fullant[i])[0]
+            S11_array[i] = S11
+
+
+        err = 0
+
+        for i in range(S11_array.shape[0]):
+            
+            S11_mag = np.abs(S11_array[i])
+            S11_db = 20*np.log10(S11_mag)
+            # only contribute to error if we are between the desired frequency range 
+            if self.freqs_for_fullant[i] >= self.freq_bounds_for_optimization[0] and self.freqs_for_fullant[i] <= self.freq_bounds_for_optimization[1]:
+            
+                if S11_db <= self.S11_db_cutouff: 
+                    err = err + 0
+                else:
+                    err = err + (S11_db - self.S11_db_cutouff)**2 # squared error if the value of S11 is above the cuttoff
+
+                # New section with error created via the npar peak not being in the correct place.  
+                if self.center_fed_mode == True:
+                    found_npar_peak, power_max, power_zero = self.get_peak_npar_spectrum(lengths=prm,
+                                                                npar_bounds=self.npar_bounds_for_npar_op,
+                                                                freq=self.freq_for_npar_op,
+                                                                num_npars=self.num_npars_for_npar_op,
+                                                                power=[1,0,0],
+                                                                phase=[0,0,0],
+                                                                symetric_mode=self.symetric_mode,
+                                                                one_cap_type_mode=self.one_cap_type_mode,
+                                                                end_cap_mode=self.end_cap_mode)
+                else:
+                    found_npar_peak, power_max, power_zero = self.get_peak_npar_spectrum(lengths=prm,
                                                                 npar_bounds=self.npar_bounds_for_npar_op,
                                                                 freq=self.freq_for_npar_op,
                                                                 num_npars=self.num_npars_for_npar_op,
@@ -1581,15 +1697,17 @@ class TWA_skrf_Toolkit:
                 
                 # npar_error = self.alpha_npar_op*(found_npar_peak + 2.05 - self.target_npar)**2/(self.target_npar**2)  # TODO: the 2.05 here is found manually and not convinced it applies everywhere 
                 npar_error = self.alpha_npar_op*(found_npar_peak - self.target_npar)**2/(self.target_npar**2)  # TODO: the 2.05 here is found manually and not convinced it applies everywhere
-                err += npar_error            
+                
+                # add the P(n||=0) error
+                npar_zero_error = self.gamma_npar_op * power_zero / power_max
+
+                err += npar_error + npar_zero_error           
 
 
         
         print(f"Average absolute error is : {err:.2e}")
         self.errors.append(err)
         return err 
-
-
     # The below function does not work because the antenna network can not be wired to a capacitor of arb. f. 
     # def plot_S11_S21_v_f_using_caps_to_increase_f_range(self, lengths, new_f_range, f0, symetric_mode=False, one_cap_type_mode=False):
     #     """
