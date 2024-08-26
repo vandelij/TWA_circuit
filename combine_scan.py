@@ -2,9 +2,9 @@ import numpy as np
 
 # user must specify the frequencies
 
-folder_name = 'bigantscan_CF/'
-file_prefix = 'bigantscan_CF_'
-save_file = 'bigscan_full_CF.csv'
+folder_name = 'bigantscan_CF_11strap/'
+file_prefix = 'bigantscan_CF_11strap_'
+save_file = 'bigscan_full_CF_11strap.csv'
 
 freqs = np.arange(81,112,1)
 

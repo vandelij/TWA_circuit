@@ -3,7 +3,7 @@ import numpy as np
 
 # user must specify the frequencies
 freqs = np.arange(81,112,1)
-filename_label = 'bigscan_full_CF'
+filename_label = 'bigscan_full_CF_11strap'
 filename = f'{filename_label}.csv'
 filename_save = f'circ_model/fixed_{filename_label}.csv'
 
