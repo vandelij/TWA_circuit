@@ -1708,6 +1708,181 @@ class TWA_skrf_Toolkit:
         print(f"Average absolute error is : {err:.2e}")
         self.errors.append(err)
         return err 
+    
+
+    def get_phase_diff_and_PR_straps_1_and_2(self, lengths, freq, power=[1,0], phase=[0,0],
+                                symetric_mode=True,
+                                one_cap_type_mode=False,
+                                end_cap_mode=False):
+        """
+        This function returns the phase difference in radians and power ratio PR between the first and second straps for a symetric array. 
+        lengths: list of capacitor lengths
+        freq: frquency of specturm in Hz
+        power: iterable size 2 for center_fed_mode=False, 3 for True, contains the external port excitation 
+        phase: same as above but for the phase 
+        """
+        if self.symetric_mode == False:
+            raise ValueError('self.symetric_mode cannot be False when using cancel_image_currents')
+        
+        full_circ = self.get_fullant_given_lengths_from_internal_datatable(lengths, symetric_mode,
+                                                          one_cap_type_mode,
+                                                          end_cap_mode,
+                                                          return_circ=True)
+        
+        idx = np.where(full_circ.frequency.f_scaled == freq/1e6) # get the index of the frequency in question 
+        #print('BOOM: here u go, the f you want is:', full_circ.frequency.f_scaled[idx])
+        
+        if self.center_fed_mode:
+            strap_current_array = full_circ.currents(power,phase)[idx,:].reshape(self.num_straps + 3,2)[:,1][3:]  # remove double counting, remove three or two external ports
+        else:
+            strap_current_array = full_circ.currents(power,phase)[idx,:].reshape(self.num_straps + 2,2)[:,1][2:]
+
+        strap_phases = self.get_phase(strap_current_array)
+        strap_current_mags = np.abs(strap_current_array)
+        phase_diff = strap_phases[1] - strap_phases[0] 
+        PR = (strap_current_mags[1] / strap_current_mags[0])**2 # this is I2^2 / I1^2, the power ratio in the last straps 
+        return phase_diff, PR
+    
+    def error_function_npar_match_low_npar_zero_cancel_image_currents(self, prm):
+
+        """
+        This error function uses a new parameter, self.beta_length_op, to add error when the cap lengths are not
+        close to eachother, which is beta*sum((length - average length)^2) divided by the square of the average length. 
+        """
+
+        self.prms.append(prm)
+        self.i_iter += 1
+        self.op_info(self.i_iter, prm)
+        # Filter the results if a negative value is found
+        if any([e < 0 for e in prm]):
+            return 1e30
+        
+        network = self.get_fullant_given_lengths_from_internal_datatable(lengths=prm, symetric_mode=self.symetric_mode, 
+                                                                         one_cap_type_mode=self.one_cap_type_mode,
+                                                                         end_cap_mode=self.end_cap_mode) 
+
+        S11_array = np.zeros_like(self.freqs_for_fullant, dtype='complex')
+
+        for i in range(S11_array.shape[0]):
+            S11 = self.get_full_TWA_network_S11_S21(fullnet=network, f=self.freqs_for_fullant[i])[0]
+            S11_array[i] = S11
+
+
+        err = 0
+
+        for i in range(S11_array.shape[0]):
+            
+            S11_mag = np.abs(S11_array[i])
+            S11_db = 20*np.log10(S11_mag)
+            # only contribute to error if we are between the desired frequency range 
+            if self.freqs_for_fullant[i] >= self.freq_bounds_for_optimization[0] and self.freqs_for_fullant[i] <= self.freq_bounds_for_optimization[1]:
+            
+                if S11_db <= self.S11_db_cutouff: 
+                    err = err + 0
+                else:
+                    err = err + (S11_db - self.S11_db_cutouff)**2 # squared error if the value of S11 is above the cuttoff
+
+                # New section with error created via the npar peak not being in the correct place.  
+                if self.center_fed_mode == True:
+                    found_npar_peak, power_max, power_zero = self.get_peak_npar_spectrum(lengths=prm,
+                                                                npar_bounds=self.npar_bounds_for_npar_op,
+                                                                freq=self.freq_for_npar_op,
+                                                                num_npars=self.num_npars_for_npar_op,
+                                                                power=[1,0,0],
+                                                                phase=[0,0,0],
+                                                                symetric_mode=self.symetric_mode,
+                                                                one_cap_type_mode=self.one_cap_type_mode,
+                                                                end_cap_mode=self.end_cap_mode)
+                else:
+                    found_npar_peak, power_max, power_zero = self.get_peak_npar_spectrum(lengths=prm,
+                                                                npar_bounds=self.npar_bounds_for_npar_op,
+                                                                freq=self.freq_for_npar_op,
+                                                                num_npars=self.num_npars_for_npar_op,
+                                                                power=[1,0],
+                                                                phase=[0,0],
+                                                                symetric_mode=self.symetric_mode,
+                                                                one_cap_type_mode=self.one_cap_type_mode,
+                                                                end_cap_mode=self.end_cap_mode)
+                
+                # npar_error = self.alpha_npar_op*(found_npar_peak + 2.05 - self.target_npar)**2/(self.target_npar**2)  # TODO: the 2.05 here is found manually and not convinced it applies everywhere 
+                npar_error = self.alpha_npar_op*(found_npar_peak - self.target_npar)**2/(self.target_npar**2)  # TODO: the 2.05 here is found manually and not convinced it applies everywhere
+                
+                # add the P(n||=0) error
+                npar_zero_error = self.gamma_npar_op * power_zero / power_max
+
+                # new section to deal with the image current phase and magnitude 
+                if self.center_fed_mode == True:
+                    phase_diff, PR = self.get_phase_diff_and_PR_straps_1_and_2(self, lengths=prm, 
+                                                                            freq=self.freq_bounds_for_optimization,
+                                                                            power=[1,0,0],
+                                                                            phase=[0,0,0],
+                                                                            symetric_mode=True,
+                                                                            one_cap_type_mode=False,
+                                                                            end_cap_mode=False)
+                else: 
+                    phase_diff, PR = self.get_phase_diff_and_PR_straps_1_and_2(self, lengths=prm, 
+                                                                            freq=self.freq_bounds_for_optimization,
+                                                                            power=[1,0],
+                                                                            phase=[0,0],
+                                                                            symetric_mode=True,
+                                                                            one_cap_type_mode=False,
+                                                                            end_cap_mode=False)
+                    
+                # create the error for the phase difference and for the power ratio difference 
+                power_ratio_error = self.lam2_image_current_mag_op * (PR - self.target_power_ratio_image_current_op)**2 / self.target_power_ratio_image_current_op**2
+                phase_diff_error = self.lam1_image_current_phase_op * (phase_diff - np.pi)**2 / np.pi**2
+
+                err += npar_error + npar_zero_error + phase_diff_error + power_ratio_error  # Includes error for the power ratio in image current strap, phase diff        
+
+
+        
+        print(f"Average absolute error is : {err:.2e}")
+        self.errors.append(err)
+        return err 
+    
+
+
+    def run_differential_evolution_global_op_npar_match_low_npar_zero_cancel_image_currents(self, 
+                                            length_bounds,
+                                            S11_db_cutouff,
+                                            freq, # in Hz
+                                            freq_bounds,
+                                            alpha_npar_op,
+                                            gamma_npar_op,
+                                            target_npar,
+                                            npar_bounds, # for finding the maximum for the optimization 
+                                            num_npars,
+                                            lam1_image_current_phase_op,
+                                            lam2_image_current_mag_op,
+                                            target_power_ratio_image_current_op,
+                                            strategy='best1bin',
+                                            symetric_mode=False,
+                                            one_cap_type_mode=False,
+                                            end_cap_mode=False):
+        """
+        This version of the optimization also aims to try and also match the desired npar performance. both the
+        peak location (weighted by alpha) and the peak at zero (weighted by gamma) are added to the cost 
+        """
+        self.i_iter = 0
+        self.prms = []
+        self.errors = []
+        self.symetric_mode = symetric_mode
+        self.one_cap_type_mode = one_cap_type_mode
+        self.end_cap_mode = end_cap_mode
+        self.freq_bounds_for_optimization = freq_bounds
+        self.S11_db_cutouff = S11_db_cutouff
+        self.alpha_npar_op = alpha_npar_op
+        self.gamma_npar_op = gamma_npar_op
+        self.target_npar = target_npar # this sets the target npar 
+        self.npar_bounds_for_npar_op = npar_bounds
+        self.num_npars_for_npar_op = num_npars
+        self.lam1_image_current_phase_op = lam1_image_current_phase_op # weight of the image current phase on the cost function 
+        self.lam2_image_current_mag_op = lam2_image_current_mag_op # weight of the image current magnitude on the cost function 
+        self.target_power_ratio_image_current_op = target_power_ratio_image_current_op # the target power ratio I2^2/I1^2, where I1 is the current in the first strap 
+        self.freq_for_npar_op = freq
+        res = differential_evolution(self.error_function_npar_match_low_npar_zero_cancel_image_currents, bounds=length_bounds, strategy=strategy)
+        
+        return res
     # The below function does not work because the antenna network can not be wired to a capacitor of arb. f. 
     # def plot_S11_S21_v_f_using_caps_to_increase_f_range(self, lengths, new_f_range, f0, symetric_mode=False, one_cap_type_mode=False):
     #     """
