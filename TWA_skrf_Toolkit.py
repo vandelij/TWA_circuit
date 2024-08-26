@@ -1724,7 +1724,7 @@ class TWA_skrf_Toolkit:
         if self.symetric_mode == False:
             raise ValueError('self.symetric_mode cannot be False when using cancel_image_currents')
         
-        full_circ = self.get_fullant_given_lengths_from_internal_datatable(lengths, symetric_mode,
+        full_circ = self.get_fullant_given_lengths_from_internal_datatable(lengths.copy(), symetric_mode,
                                                           one_cap_type_mode,
                                                           end_cap_mode,
                                                           return_circ=True)
@@ -1739,7 +1739,9 @@ class TWA_skrf_Toolkit:
 
         strap_phases = self.get_phase(strap_current_array)
         strap_current_mags = np.abs(strap_current_array)
-        phase_diff = strap_phases[1] - strap_phases[0] 
+        twopi = 2*np.pi
+        phase_diff = (strap_phases[1]%twopi) - (strap_phases[0]%twopi) 
+        phase_diff = phase_diff % twopi # if the phase difference is negative, convert to between 0 and 2pi
         PR = (strap_current_mags[1] / strap_current_mags[0])**2 # this is I2^2 / I1^2, the power ratio in the last straps 
         return phase_diff, PR
     
@@ -1812,16 +1814,16 @@ class TWA_skrf_Toolkit:
 
                 # new section to deal with the image current phase and magnitude 
                 if self.center_fed_mode == True:
-                    phase_diff, PR = self.get_phase_diff_and_PR_straps_1_and_2(self, lengths=prm, 
-                                                                            freq=self.freq_bounds_for_optimization,
+                    phase_diff, PR = self.get_phase_diff_and_PR_straps_1_and_2(lengths=prm, 
+                                                                            freq=self.freq_for_npar_op,
                                                                             power=[1,0,0],
                                                                             phase=[0,0,0],
                                                                             symetric_mode=True,
                                                                             one_cap_type_mode=False,
                                                                             end_cap_mode=False)
                 else: 
-                    phase_diff, PR = self.get_phase_diff_and_PR_straps_1_and_2(self, lengths=prm, 
-                                                                            freq=self.freq_bounds_for_optimization,
+                    phase_diff, PR = self.get_phase_diff_and_PR_straps_1_and_2(lengths=prm, 
+                                                                            freq=self.freq_for_npar_op,
                                                                             power=[1,0],
                                                                             phase=[0,0],
                                                                             symetric_mode=True,
