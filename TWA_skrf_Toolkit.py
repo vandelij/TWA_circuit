@@ -1785,26 +1785,31 @@ class TWA_skrf_Toolkit:
                     err = err + (S11_db - self.S11_db_cutouff)**2 # squared error if the value of S11 is above the cuttoff
 
                 # New section with error created via the npar peak not being in the correct place.  
-                if self.center_fed_mode == True:
-                    found_npar_peak, power_max, power_zero = self.get_peak_npar_spectrum(lengths=prm,
-                                                                npar_bounds=self.npar_bounds_for_npar_op,
-                                                                freq=self.freq_for_npar_op,
-                                                                num_npars=self.num_npars_for_npar_op,
-                                                                power=[1,0,0],
-                                                                phase=[0,0,0],
-                                                                symetric_mode=self.symetric_mode,
-                                                                one_cap_type_mode=self.one_cap_type_mode,
-                                                                end_cap_mode=self.end_cap_mode)
+                if (self.alpha_npar_op == 0) and (self.gamma_npar_op == 0):
+                    found_npar_peak = 0
+                    power_max = 1
+                    power_zero = 0
                 else:
-                    found_npar_peak, power_max, power_zero = self.get_peak_npar_spectrum(lengths=prm,
-                                                                npar_bounds=self.npar_bounds_for_npar_op,
-                                                                freq=self.freq_for_npar_op,
-                                                                num_npars=self.num_npars_for_npar_op,
-                                                                power=[1,0],
-                                                                phase=[0,0],
-                                                                symetric_mode=self.symetric_mode,
-                                                                one_cap_type_mode=self.one_cap_type_mode,
-                                                                end_cap_mode=self.end_cap_mode)
+                    if self.center_fed_mode == True:
+                        found_npar_peak, power_max, power_zero = self.get_peak_npar_spectrum(lengths=prm,
+                                                                    npar_bounds=self.npar_bounds_for_npar_op,
+                                                                    freq=self.freq_for_npar_op,
+                                                                    num_npars=self.num_npars_for_npar_op,
+                                                                    power=[1,0,0],
+                                                                    phase=[0,0,0],
+                                                                    symetric_mode=self.symetric_mode,
+                                                                    one_cap_type_mode=self.one_cap_type_mode,
+                                                                    end_cap_mode=self.end_cap_mode)
+                    else:
+                        found_npar_peak, power_max, power_zero = self.get_peak_npar_spectrum(lengths=prm,
+                                                                    npar_bounds=self.npar_bounds_for_npar_op,
+                                                                    freq=self.freq_for_npar_op,
+                                                                    num_npars=self.num_npars_for_npar_op,
+                                                                    power=[1,0],
+                                                                    phase=[0,0],
+                                                                    symetric_mode=self.symetric_mode,
+                                                                    one_cap_type_mode=self.one_cap_type_mode,
+                                                                    end_cap_mode=self.end_cap_mode)
                 
                 # npar_error = self.alpha_npar_op*(found_npar_peak + 2.05 - self.target_npar)**2/(self.target_npar**2)  # TODO: the 2.05 here is found manually and not convinced it applies everywhere 
                 npar_error = self.alpha_npar_op*(found_npar_peak - self.target_npar)**2/(self.target_npar**2)  # TODO: the 2.05 here is found manually and not convinced it applies everywhere
@@ -1812,23 +1817,27 @@ class TWA_skrf_Toolkit:
                 # add the P(n||=0) error
                 npar_zero_error = self.gamma_npar_op * power_zero / power_max
 
-                # new section to deal with the image current phase and magnitude 
-                if self.center_fed_mode == True:
-                    phase_diff, PR = self.get_phase_diff_and_PR_straps_1_and_2(lengths=prm, 
-                                                                            freq=self.freq_for_npar_op,
-                                                                            power=[1,0,0],
-                                                                            phase=[0,0,0],
-                                                                            symetric_mode=True,
-                                                                            one_cap_type_mode=False,
-                                                                            end_cap_mode=False)
-                else: 
-                    phase_diff, PR = self.get_phase_diff_and_PR_straps_1_and_2(lengths=prm, 
-                                                                            freq=self.freq_for_npar_op,
-                                                                            power=[1,0],
-                                                                            phase=[0,0],
-                                                                            symetric_mode=True,
-                                                                            one_cap_type_mode=False,
-                                                                            end_cap_mode=False)
+                # new section to deal with the image current phase and magnitude
+                if (self.lam1_image_current_phase_op == 0) and (self.lam2_image_current_mag_op == 0):
+                    phase_diff = 0
+                    PR = 0
+                else:
+                    if self.center_fed_mode == True:
+                        phase_diff, PR = self.get_phase_diff_and_PR_straps_1_and_2(lengths=prm, 
+                                                                                freq=self.freq_for_npar_op,
+                                                                                power=[1,0,0],
+                                                                                phase=[0,0,0],
+                                                                                symetric_mode=True,
+                                                                                one_cap_type_mode=False,
+                                                                                end_cap_mode=False)
+                    else: 
+                        phase_diff, PR = self.get_phase_diff_and_PR_straps_1_and_2(lengths=prm, 
+                                                                                freq=self.freq_for_npar_op,
+                                                                                power=[1,0],
+                                                                                phase=[0,0],
+                                                                                symetric_mode=True,
+                                                                                one_cap_type_mode=False,
+                                                                                end_cap_mode=False)
                     
                 # create the error for the phase difference and for the power ratio difference 
                 power_ratio_error = self.lam2_image_current_mag_op * (PR - self.target_power_ratio_image_current_op)**2 / self.target_power_ratio_image_current_op**2
@@ -1860,7 +1869,8 @@ class TWA_skrf_Toolkit:
                                             strategy='best1bin',
                                             symetric_mode=False,
                                             one_cap_type_mode=False,
-                                            end_cap_mode=False):
+                                            end_cap_mode=False,
+                                            workers=1):
         """
         This version of the optimization also aims to try and also match the desired npar performance. both the
         peak location (weighted by alpha) and the peak at zero (weighted by gamma) are added to the cost 
@@ -1882,7 +1892,7 @@ class TWA_skrf_Toolkit:
         self.lam2_image_current_mag_op = lam2_image_current_mag_op # weight of the image current magnitude on the cost function 
         self.target_power_ratio_image_current_op = target_power_ratio_image_current_op # the target power ratio I2^2/I1^2, where I1 is the current in the first strap 
         self.freq_for_npar_op = freq
-        res = differential_evolution(self.error_function_npar_match_low_npar_zero_cancel_image_currents, bounds=length_bounds, strategy=strategy)
+        res = differential_evolution(self.error_function_npar_match_low_npar_zero_cancel_image_currents, bounds=length_bounds, strategy=strategy, workers=workers)
         
         return res
     # The below function does not work because the antenna network can not be wired to a capacitor of arb. f. 
