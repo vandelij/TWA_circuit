@@ -1528,7 +1528,7 @@ class TWA_skrf_Toolkit:
                                                                         phase_array=strap_phases)
             result_circ_model = np.append(result_circ_model, power)     
 
-        return result_circ_model
+        return np.real(result_circ_model)
 
     def run_differential_evolution_global_op_npar_match(self, 
                                             length_bounds,
@@ -2058,7 +2058,7 @@ class TWA_skrf_Toolkit:
         
         ideal_npar_spec = self.normalized_npar_ideal(npar_array, ntarget=self.target_npar, sigma=self.sigma_for_ideal_npar)
 
-        npar_error = np.sum(np.square(npar_spec_found - ideal_npar_spec)) / self.num_npars_for_npar_op
+        npar_error = self.omega_npar_op*np.sum(np.square(npar_spec_found - ideal_npar_spec)) / self.num_npars_for_npar_op
 
         # new section to deal with the image current phase and magnitude
         if (self.lam1_image_current_phase_op == 0) and (self.lam2_image_current_mag_op == 0):
