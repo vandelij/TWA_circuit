@@ -1941,6 +1941,8 @@ class TWA_skrf_Toolkit:
                                             target_npar,
                                             npar_bounds, # for matching the ideal and resultant profiles  
                                             num_npars,
+                                            custom_npar_array,
+                                            use_custom_npar_array,
                                             sigma_for_ideal_npar,
                                             lam1_image_current_phase_op,
                                             lam2_image_current_mag_op,
@@ -1968,6 +1970,8 @@ class TWA_skrf_Toolkit:
         self.target_npar = target_npar # this sets the target npar 
         self.npar_bounds_for_npar_op = npar_bounds
         self.num_npars_for_npar_op = num_npars
+        self.custom_npar_array = custom_npar_array
+        self.use_custom_npar_array = use_custom_npar_array
         self.lam1_image_current_phase_op = lam1_image_current_phase_op # weight of the image current phase on the cost function 
         self.lam2_image_current_mag_op = lam2_image_current_mag_op # weight of the image current magnitude on the cost function 
         self.target_power_ratio_image_current_op = target_power_ratio_image_current_op # the target power ratio I2^2/I1^2, where I1 is the current in the first strap 
@@ -2051,10 +2055,13 @@ class TWA_skrf_Toolkit:
                                                         one_cap_type_mode=self.one_cap_type_mode,
                                                         end_cap_mode=self.end_cap_mode)
         
-        # now, get the ideal spectrum 
-        npar_array = np.linspace(self.npar_bounds_for_npar_op[0], 
-                                    self.npar_bounds_for_npar_op[1], 
-                                    self.num_npars_for_npar_op)
+        # now, get the ideal spectrum. Check if a custom npar array was supplied. 
+        if self.use_custom_npar_array == False:
+            npar_array = np.linspace(self.npar_bounds_for_npar_op[0], 
+                                        self.npar_bounds_for_npar_op[1], 
+                                        self.num_npars_for_npar_op)
+        else:
+            npar_array = self.custom_npar_array
         
         ideal_npar_spec = self.normalized_npar_ideal(npar_array, ntarget=self.target_npar, sigma=self.sigma_for_ideal_npar)
 
