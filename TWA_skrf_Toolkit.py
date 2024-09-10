@@ -2039,30 +2039,30 @@ class TWA_skrf_Toolkit:
         #     power_max = 1
         #     power_zero = 0
         # else:
-        if self.use_custom_npar_array == False:
-            if self.center_fed_mode == True:
-                npar_spec_found = self.get_npar_spectrum(lengths=prm,
-                                                            npar_bounds=self.npar_bounds_for_npar_op,
-                                                            freq=self.freq_for_npar_op,
-                                                            num_npars=self.num_npars_for_npar_op,
-                                                            power=[1,0,0],
-                                                            phase=[0,0,0],
-                                                            symetric_mode=self.symetric_mode,
-                                                            one_cap_type_mode=self.one_cap_type_mode,
-                                                            end_cap_mode=self.end_cap_mode)
-            else:
-                npar_spec_found = self.get_npar_spectrum(lengths=prm,
-                                                            npar_bounds=self.npar_bounds_for_npar_op,
-                                                            freq=self.freq_for_npar_op,
-                                                            num_npars=self.num_npars_for_npar_op,
-                                                            power=[1,0],
-                                                            phase=[0,0],
-                                                            symetric_mode=self.symetric_mode,
-                                                            one_cap_type_mode=self.one_cap_type_mode,
-                                                            end_cap_mode=self.end_cap_mode)
+        
+        if self.center_fed_mode == True:
+            npar_spec_found = self.get_npar_spectrum(lengths=prm,
+                                                        npar_bounds=self.npar_bounds_for_npar_op,
+                                                        freq=self.freq_for_npar_op,
+                                                        num_npars=self.num_npars_for_npar_op,
+                                                        power=[1,0,0],
+                                                        phase=[0,0,0],
+                                                        symetric_mode=self.symetric_mode,
+                                                        one_cap_type_mode=self.one_cap_type_mode,
+                                                        end_cap_mode=self.end_cap_mode)
+        else:
+            npar_spec_found = self.get_npar_spectrum(lengths=prm,
+                                                        npar_bounds=self.npar_bounds_for_npar_op,
+                                                        freq=self.freq_for_npar_op,
+                                                        num_npars=self.num_npars_for_npar_op,
+                                                        power=[1,0],
+                                                        phase=[0,0],
+                                                        symetric_mode=self.symetric_mode,
+                                                        one_cap_type_mode=self.one_cap_type_mode,
+                                                        end_cap_mode=self.end_cap_mode)
             
             # now, get the ideal spectrum. Check if a custom npar array was supplied. 
-
+        if self.use_custom_npar_array == False:
             npar_array = np.linspace(self.npar_bounds_for_npar_op[0], 
                                         self.npar_bounds_for_npar_op[1], 
                                         self.num_npars_for_npar_op)
