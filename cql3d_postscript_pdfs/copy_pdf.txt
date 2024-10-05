@@ -1,0 +1,1 @@
+scp vandelij@eofe7.mit.edu:/home/vandelij/HFW_147634/scan_matrix_npar_beam_5_rf_0_7/npar_4_yuri_edits/cql3d.pdf cql3d_yuri3.pd
