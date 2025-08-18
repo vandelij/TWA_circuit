@@ -1399,7 +1399,7 @@ class TWA_skrf_Toolkit:
         self.errors.append(err)
         return err 
 
-    def analytic_power_spectrum_general_phase_diff(self, npar, w_strap, d_strap, freq, phase_array):
+    def analytic_power_spectrum_general_phase_diff(self, npar, w_strap, d_strap, freq, phase_array, magnitude_array=1):
         """
         npar: n|| = k|| c / omega
         w_strap: strap width in meters
@@ -1409,9 +1409,9 @@ class TWA_skrf_Toolkit:
 
         from equation 1.38 in Greg Wallace's thesis Behavior of Lower Hybrid Waves in the Scrape-Off Layer of a Diverted Tokamak
         """
-
+        #TODO: you need to also supply the strap magntiudes!!! This is likely your discrepancy. Look at Greg's Thesis. 
         w = 2*np.pi*freq
-        insin = npar*w_strap*w/(2*self.clight)
+        insin = npar*w_strap*w/(2*self.clight) 
         
         # deal with the sinc function zero 
         if npar == 0:
@@ -1422,15 +1422,21 @@ class TWA_skrf_Toolkit:
         sum1 = 0
         j = 0
         for phase in phase_array:
-            beta = npar*(w/self.clight)*(j*d_strap) # this ignores w_strap/2, as discussed in Greg Wallace's thesis 
-            sum1 += np.exp(-1j*(beta + phase))
+            beta = npar*(w/self.clight)*(j*d_strap) # this ignores w_strap/2, as discussed in Greg Wallace's thesis
+            if type(magnitude_array) == int: 
+                sum1 += magnitude_array*np.exp(-1j*(beta + phase))
+            else:
+                sum1 += magnitude_array[j]*np.exp(-1j*(beta + phase))
             j += 1
 
         sum2 = 0
         j = 0
         for phase in phase_array:
             beta = npar*(w/self.clight)*(j*d_strap) # this ignores w_strap/2, as discussed in Greg Wallace's thesis
-            sum2 += np.exp(+1j*(beta + phase))
+            if type(magnitude_array) == int:
+                sum2 += magnitude_array*np.exp(+1j*(beta + phase))
+            else:
+                sum2 += magnitude_array[j]*np.exp(+1j*(beta + phase))
             j += 1
 
         return term1 * sum1 * sum2 

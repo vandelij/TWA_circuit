@@ -2,11 +2,11 @@ import numpy as np
 
 # user must specify the frequencies
 
-folder_name = 'bigantscan_CF_13strap_2passive/'
-file_prefix = 'bigantscan_CF_13strap_2passive_'
-save_file = 'bigscan_full_CF_13strap_2passive.csv'
+folder_name = 'bigantscan_CF_13strap_2passive_plasma_fine/'
+file_prefix = 'bigantscan_CF_13strap_2passive_plasma_'
+save_file = 'bigscan_full_CF_13strap_2passive_plasma_fine.csv'
 
-freqs = np.arange(81,112,1)
+freqs = np.array([95250, 95500, 95750, 96250, 96500, 96750])
 
 lines_out = []
 for fr in freqs:
