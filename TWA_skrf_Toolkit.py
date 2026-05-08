@@ -7,7 +7,7 @@ from scipy.optimize import minimize, differential_evolution
 
 class TWA_skrf_Toolkit:
 
-    def __init__(self, num_straps, f0, k_par_max, capz0, antz0, freqs_for_fullant, capfile, antfile, center_fed_mode=False):
+    def __init__(self, num_straps, f0, k_par_max, capz0, antz0, freqs_for_fullant, capfile, antfile, center_fed_mode=False, de_embedded=True):
         """
         freqs_for_fullant: frequency np array in [MHz] 
         capfile: path to comsol output csv file containing freq, length, S11... on each row
@@ -21,6 +21,7 @@ class TWA_skrf_Toolkit:
         self.capfile = capfile
         self.antfile = antfile 
         self.center_fed_mode = center_fed_mode
+        self.de_embedded = de_embedded
 
         # default values
         self.clight = 299792458 # m/s 
@@ -52,6 +53,7 @@ class TWA_skrf_Toolkit:
         self.set_interpolators_cap_data()
         if self.freqs_for_fullant.shape[0] > 1:
             self.set_ant_Smat_interpolator()
+        print('changes seeen')
 
     def print_geometry(self):
         maxstring = 1
@@ -100,10 +102,16 @@ class TWA_skrf_Toolkit:
         rownum = i_f*num_lengths + i_length
         ffound = np.real(data[rownum, 0])
         lcapfound = np.real(data[rownum,1])
-        S11 = data[rownum, 5] # TODO: was 3, now de-embedded
-        S11db = np.real(data[rownum, 4])
-        Z0_port = np.real(data[rownum, 7])
-        VSWR = np.real(data[rownum, 8])
+        if self.de_embedded:
+            S11 = data[rownum, 5] # TODO: was 3, now de-embedded
+            S11db = np.real(data[rownum, 4])
+            Z0_port = np.real(data[rownum, 7])
+            VSWR = np.real(data[rownum, 8])
+        else:
+            S11 = data[rownum, 3] 
+            S11db = np.real(data[rownum, 4])
+            Z0_port = np.real(data[rownum, 6])
+            VSWR = np.real(data[rownum, 7])
         #print('TODO: should test with a slightly larger dataset')
         return ffound, lcapfound, S11, S11db, Z0_port, VSWR
 
@@ -452,10 +460,18 @@ class TWA_skrf_Toolkit:
         rownum = i_f*num_lengths + i_length
         ffound = np.real(data[rownum, 0])
         lcapfound = np.real(data[rownum,1])
-        S11 = data[rownum, 5] # TODO: was 3, now de-embedded
-        S11db = np.real(data[rownum, 4])
-        Z0_port = np.real(data[rownum, 7])
-        VSWR = np.real(data[rownum, 8])
+        if self.de_embedded:
+            raise ValueError('In the wrong spot')
+            S11 = data[rownum, 5] # TODO: was 3, now de-embedded... check these other guys
+            S11db = np.real(data[rownum, 4])
+            Z0_port = np.real(data[rownum, 7])
+            VSWR = np.real(data[rownum, 8])
+        else:
+            raise ValueError('Made it')
+            S11 = data[rownum, 3]
+            S11db = np.real(data[rownum, 4])
+            Z0_port = np.real(data[rownum, 6])
+            VSWR = np.real(data[rownum, 7])
         return ffound, lcapfound, S11, S11db, Z0_port, VSWR
 
     def build_capnet_given_length_from_internal_datatable(self, length, freqs, round_level=3):
@@ -849,8 +865,12 @@ class TWA_skrf_Toolkit:
         round_level = 3
         fs = np.real(np.unique(capdata[:,0]))
         ls = np.round(np.real(np.unique(capdata[:,1])), round_level)
-        S11_real = np.real(capdata[:,5]).reshape(fs.shape[0], ls.shape[0]) # this is the de-embeded collumn 
-        S11_imag = np.imag(capdata[:,5]).reshape(fs.shape[0], ls.shape[0]) # this is the de-embeded collumn 
+        if self.de_embedded:
+            S11_real = np.real(capdata[:,5]).reshape(fs.shape[0], ls.shape[0]) # this is the de-embeded collumn 
+            S11_imag = np.imag(capdata[:,5]).reshape(fs.shape[0], ls.shape[0]) # this is the de-embeded collumn 
+        else:
+            S11_real = np.real(capdata[:,3]).reshape(fs.shape[0], ls.shape[0]) # this is the non-de-embeded collumn 
+            S11_imag = np.imag(capdata[:,3]).reshape(fs.shape[0], ls.shape[0]) # this is the non-de-embeded collumn 
 
         self.S11_real_interpolator = RectBivariateSpline(fs, ls, S11_real)
         self.S11_imag_interpolator = RectBivariateSpline(fs, ls, S11_imag)
