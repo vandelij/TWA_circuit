@@ -2,8 +2,8 @@ import csv
 import numpy as np
 
 # user must specify the frequencies
-freqs = np.array([95.250, 95.500, 95.750, 96.250, 96.500, 96.750])
-filename_label = 'bigscan_full_CF_13strap_2passive_plasma_fine'
+freqs = np.array([92, 93, 94, 95, 96, 97, 98, 99, 100])
+filename_label = 'lab3_5_55cmdvac'
 filename = f'{filename_label}.csv'
 filename_save = f'circ_model/fixed_{filename_label}.csv'
 
