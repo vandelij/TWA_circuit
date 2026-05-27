@@ -2,11 +2,20 @@ import numpy as np
 
 # user must specify the frequencies
 
-folder_name = 'lab3_5_55cmdvac/'
-file_prefix = 'lab3_5_55cmdvac_'
-save_file = 'lab3_5_55cmdvac.csv'
+folder_name = 'lab6_11cmdeembed/'
+file_prefix = 'lab6_11cmdeembed_'
+save_file = 'lab6_11cmdeembed.csv'
 
-freqs = np.array([92, 93, 94, 95, 96, 97, 98, 99, 100])
+# freqs = np.array(['92', '93', '94', '95', '96', '97', '98', '99', '100'])
+freqs = np.array(['92', '92_5', 
+                  '93', '93_5', 
+                  '94', '94_5',
+                  '95', '95_5', 
+                  '96', '96_5', 
+                  '97', '97_5',
+                  '98', '98_5',
+                  '99', '99_5',
+                  '100'])
 
 lines_out = []
 for fr in freqs:
